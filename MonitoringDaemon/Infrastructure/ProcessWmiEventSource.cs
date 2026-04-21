@@ -36,7 +36,7 @@ internal sealed class ProcessWmiEventSource : IMonitorEventSource
             _onEvent?.Invoke(new EventPayload
             {
                 t = "ps",
-                a = EventFormatting.ToIsoUtcMs(DateTimeOffset.UtcNow),
+                a = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow),
                 p = processId,
                 n = processName,
                 c = details.CommandLine,
@@ -54,29 +54,17 @@ internal sealed class ProcessWmiEventSource : IMonitorEventSource
             _onEvent?.Invoke(new EventPayload
             {
                 t = "pe",
-                a = EventFormatting.ToIsoUtcMs(DateTimeOffset.UtcNow),
+                a = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow),
                 p = processId,
                 n = processName,
                 x = exitCode
             });
         };
 
-        try
-        {
-            _processStartWatcher.Start();
-            _processStopWatcher.Start();
-            _logger.LogInformation("WMI process event source started.");
-        }
-        catch (ManagementException ex)
-        {
-            Stop();
-            _logger.LogWarning(ex, "WMI process source disabled due to insufficient permissions.");
-        }
-        catch (Exception ex)
-        {
-            Stop();
-            _logger.LogWarning(ex, "WMI process source disabled due to startup error.");
-        }
+        _processStartWatcher.Start();
+        _processStopWatcher.Start();
+
+        _logger.LogInformation("WMI process event source started.");
     }
 
     /// <inheritdoc />

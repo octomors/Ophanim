@@ -8,10 +8,10 @@ namespace MonitoringDaemon.Infrastructure;
 internal static class EventFormatting
 {
     /// <summary>
-    /// Converts timestamp to UTC ISO 8601 with millisecond precision.
+    /// Converts timestamp to UTC ISO 8601 with second precision.
     /// </summary>
-    public static string ToIsoUtcMs(DateTimeOffset timestamp)
-        => timestamp.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
+    public static string ToIsoUtcSeconds(DateTimeOffset timestamp)
+        => timestamp.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Ensures process name has .exe suffix.

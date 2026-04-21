@@ -8,7 +8,7 @@ internal sealed class EventPayload
     /// <summary>Event type: ps, pe, wf.</summary>
     public string t { get; init; } = string.Empty;
 
-    /// <summary>UTC timestamp in yyyy-MM-ddTHH:mm:ss.fffZ format.</summary>
+    /// <summary>UTC timestamp in yyyy-MM-ddTHH:mm:ssZ format.</summary>
     public string a { get; init; } = string.Empty;
 
     /// <summary>Process ID.</summary>

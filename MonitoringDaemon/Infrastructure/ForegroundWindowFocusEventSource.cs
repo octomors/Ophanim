@@ -135,7 +135,7 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
         _onEvent?.Invoke(new EventPayload
         {
             t = "wf",
-            a = EventFormatting.ToIsoUtcMs(DateTimeOffset.UtcNow),
+            a = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow),
             p = (int)pid,
             n = processName,
             w = GetWindowTitle(hwnd),

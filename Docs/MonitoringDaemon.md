@@ -91,7 +91,7 @@ Common fields:
 	- ps = process_start
 	- pe = process_end
 	- wf = window_focus
-- a (string): UTC timestamp in ISO 8601 with milliseconds: yyyy-MM-ddTHH:mm:ss.fffZ
+- a (string): UTC timestamp in ISO 8601 with seconds: yyyy-MM-ddTHH:mm:ssZ
 - p (number): process id
 - n (string): process name (exe)
 
@@ -106,15 +106,15 @@ Optional fields:
 Examples:
 
 ```json
-{"t":"ps","a":"2026-04-21T13:28:16.009Z","p":6800,"n":"conhost.exe","c":"\"C:\\Windows\\System32\\conhost.exe\" 0x4","r":5120}
-{"t":"wf","a":"2026-04-21T13:29:01.442Z","p":22092,"n":"chrome.exe","w":"ChatGPT - Google Chrome","k":"Chrome_WidgetWin_1"}
-{"t":"pe","a":"2026-04-21T13:30:28.161Z","p":22092,"n":"chrome.exe","x":0}
+{"t":"ps","a":"2026-04-21T13:28:16Z","p":6800,"n":"conhost.exe","c":"\"C:\\Windows\\System32\\conhost.exe\" 0x4","r":5120}
+{"t":"wf","a":"2026-04-21T13:29:01Z","p":22092,"n":"chrome.exe","w":"ChatGPT - Google Chrome","k":"Chrome_WidgetWin_1"}
+{"t":"pe","a":"2026-04-21T13:30:28Z","p":22092,"n":"chrome.exe","x":0}
 ```
 
 Notes:
 
 - Null optional fields are omitted from output.
-- Timestamps are normalized to UTC with millisecond precision.
+- Timestamps are normalized to UTC with second precision.
 
 ## Reliability
 
