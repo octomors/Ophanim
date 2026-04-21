@@ -61,10 +61,22 @@ internal sealed class ProcessWmiEventSource : IMonitorEventSource
             });
         };
 
-        _processStartWatcher.Start();
-        _processStopWatcher.Start();
-
-        _logger.LogInformation("WMI process event source started.");
+        try
+        {
+            _processStartWatcher.Start();
+            _processStopWatcher.Start();
+            _logger.LogInformation("WMI process event source started.");
+        }
+        catch (ManagementException ex)
+        {
+            Stop();
+            _logger.LogWarning(ex, "WMI process source disabled due to insufficient permissions.");
+        }
+        catch (Exception ex)
+        {
+            Stop();
+            _logger.LogWarning(ex, "WMI process source disabled due to startup error.");
+        }
     }
 
     /// <inheritdoc />

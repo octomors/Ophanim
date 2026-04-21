@@ -42,7 +42,14 @@ internal sealed class Worker : BackgroundService
 
         foreach (var source in _eventSources)
         {
-            source.Start(AppendIfAllowed);
+            try
+            {
+                source.Start(AppendIfAllowed);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to start event source {SourceType}", source.GetType().Name);
+            }
         }
 
         _logger.LogInformation("Monitoring daemon started.");

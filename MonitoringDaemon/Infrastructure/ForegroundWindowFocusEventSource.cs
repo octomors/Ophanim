@@ -16,37 +16,74 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
     private NativeMethods.WinEventDelegate? _callback;
     private Action<EventPayload>? _onEvent;
     private IntPtr _lastFocusedHwnd = IntPtr.Zero;
+    private Thread? _hookThread;
+    private uint _hookThreadId;
+    private TaskCompletionSource<bool>? _hookReady;
 
     /// <inheritdoc />
     public void Start(Action<EventPayload> onEvent)
     {
         _onEvent = onEvent;
-        _callback = OnWinEvent;
-
-        _winEventHook = NativeMethods.SetWinEventHook(
-            NativeMethods.EVENT_SYSTEM_FOREGROUND,
-            NativeMethods.EVENT_SYSTEM_FOREGROUND,
-            IntPtr.Zero,
-            _callback,
-            0,
-            0,
-            NativeMethods.WINEVENT_OUTOFCONTEXT | NativeMethods.WINEVENT_SKIPOWNPROCESS);
-
-        if (_winEventHook == IntPtr.Zero)
+        _hookReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _hookThread = new Thread(() =>
         {
-            throw new InvalidOperationException("Failed to install foreground event hook.");
-        }
+            _hookThreadId = NativeMethods.GetCurrentThreadId();
+            _callback = OnWinEvent;
+
+            _winEventHook = NativeMethods.SetWinEventHook(
+                NativeMethods.EVENT_SYSTEM_FOREGROUND,
+                NativeMethods.EVENT_SYSTEM_FOREGROUND,
+                IntPtr.Zero,
+                _callback,
+                0,
+                0,
+                NativeMethods.WINEVENT_OUTOFCONTEXT | NativeMethods.WINEVENT_SKIPOWNPROCESS);
+
+            if (_winEventHook == IntPtr.Zero)
+            {
+                _hookReady.TrySetException(new InvalidOperationException("Failed to install foreground event hook."));
+                return;
+            }
+
+            _hookReady.TrySetResult(true);
+
+            while (NativeMethods.GetMessage(out var msg, IntPtr.Zero, 0, 0) > 0)
+            {
+                NativeMethods.TranslateMessage(ref msg);
+                NativeMethods.DispatchMessage(ref msg);
+            }
+
+            if (_winEventHook != IntPtr.Zero)
+            {
+                NativeMethods.UnhookWinEvent(_winEventHook);
+                _winEventHook = IntPtr.Zero;
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "MonitoringDaemon.ForegroundHookLoop"
+        };
+
+        _hookThread.SetApartmentState(ApartmentState.STA);
+        _hookThread.Start();
+        _hookReady.Task.GetAwaiter().GetResult();
     }
 
     /// <inheritdoc />
     public void Stop()
     {
-        if (_winEventHook != IntPtr.Zero)
+        if (_hookThreadId != 0)
         {
-            NativeMethods.UnhookWinEvent(_winEventHook);
-            _winEventHook = IntPtr.Zero;
+            NativeMethods.PostThreadMessage(_hookThreadId, NativeMethods.WM_QUIT, IntPtr.Zero, IntPtr.Zero);
         }
 
+        if (_hookThread is not null && _hookThread.IsAlive)
+        {
+            _hookThread.Join(TimeSpan.FromSeconds(2));
+        }
+
+        _hookThread = null;
+        _hookThreadId = 0;
         _onEvent = null;
     }
 
@@ -132,6 +169,7 @@ internal static class NativeMethods
     internal const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
     internal const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     internal const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
+    internal const uint WM_QUIT = 0x0012;
 
     internal delegate void WinEventDelegate(
         IntPtr hWinEventHook,
@@ -141,6 +179,24 @@ internal static class NativeMethods
         int idChild,
         uint dwEventThread,
         uint dwmsEventTime);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public UIntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public POINT pt;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINT
+    {
+        public int X;
+        public int Y;
+    }
 
     [DllImport("user32.dll")]
     internal static extern IntPtr SetWinEventHook(
@@ -158,6 +214,21 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    [DllImport("kernel32.dll")]
+    internal static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    internal static extern sbyte GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll")]
+    internal static extern bool TranslateMessage([In] ref MSG lpMsg);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr DispatchMessage([In] ref MSG lpmsg);
+
+    [DllImport("user32.dll")]
+    internal static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     internal static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
