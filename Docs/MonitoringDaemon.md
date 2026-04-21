@@ -48,8 +48,38 @@ Current folder map:
 
 - Root folder: %AppData%\\Ophanim
 - Daily logs folder: %AppData%\\Ophanim\\DayLogs
+- Event filter file: %AppData%\\Ophanim\\eventFilter.json
 - File naming: yyyy-MM-dd.ndjson
 - Mode: append-only
+
+## Event Filter
+
+At daemon startup, event filter config is loaded from %AppData%\\Ophanim\\eventFilter.json.
+If the file does not exist, daemon creates it with default content.
+
+Schema:
+
+```json
+{
+	"type": "denylist",
+	"processes": ["chrome.exe", "code.exe"]
+}
+```
+
+Rules:
+
+- type = allowlist: write only events whose process name (field n) is in processes.
+- type = denylist: write all events except process names listed in processes.
+- Process names are matched case-insensitively and normalized to .exe form.
+
+Default generated file:
+
+```json
+{
+	"type": "denylist",
+	"processes": []
+}
+```
 
 ## NDJSON Contract (Current)
 

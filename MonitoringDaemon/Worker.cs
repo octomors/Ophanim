@@ -10,6 +10,7 @@ internal sealed class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
     private readonly IMonitorEventSink _sink;
+    private readonly IEventFilterPolicy _eventFilterPolicy;
     private readonly IEnumerable<IMonitorEventSource> _eventSources;
     private readonly SessionEndMonitor _sessionEndMonitor;
 
@@ -19,11 +20,13 @@ internal sealed class Worker : BackgroundService
     public Worker(
         ILogger<Worker> logger,
         IMonitorEventSink sink,
+        IEventFilterPolicy eventFilterPolicy,
         IEnumerable<IMonitorEventSource> eventSources,
         SessionEndMonitor sessionEndMonitor)
     {
         _logger = logger;
         _sink = sink;
+        _eventFilterPolicy = eventFilterPolicy;
         _eventSources = eventSources;
         _sessionEndMonitor = sessionEndMonitor;
     }
@@ -33,12 +36,13 @@ internal sealed class Worker : BackgroundService
     /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _eventFilterPolicy.Load();
         _sink.Start();
         _sessionEndMonitor.Start(() => _sink.FlushToDisk());
 
         foreach (var source in _eventSources)
         {
-            source.Start(_sink.Append);
+            source.Start(AppendIfAllowed);
         }
 
         _logger.LogInformation("Monitoring daemon started.");
@@ -71,5 +75,13 @@ internal sealed class Worker : BackgroundService
         _sink.Dispose();
 
         await base.StopAsync(cancellationToken);
+    }
+
+    private void AppendIfAllowed(Models.EventPayload evt)
+    {
+        if (_eventFilterPolicy.ShouldWrite(evt))
+        {
+            _sink.Append(evt);
+        }
     }
 }
