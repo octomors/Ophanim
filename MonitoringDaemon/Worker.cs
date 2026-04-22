@@ -40,6 +40,12 @@ internal sealed class Worker : BackgroundService
         _sink.Start();
         _sessionEndMonitor.Start(() => _sink.FlushToDisk());
 
+        AppendIfAllowed(new Models.EventPayload
+        {
+            event_type = "logon",
+            time = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow)
+        });
+
         foreach (var source in _eventSources)
         {
             try

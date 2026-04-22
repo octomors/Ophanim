@@ -8,8 +8,8 @@ internal sealed class EventPayload
     /// <summary>Event type: process_start, process_end, focus_changed.</summary>
     public string event_type { get; init; } = string.Empty;
 
-    /// <summary>Process identifier.</summary>
-    public int pid { get; init; }
+    /// <summary>Process identifier when the event is process-related.</summary>
+    public int? pid { get; init; }
 
     /// <summary>Technical executable filename.</summary>
     public string? exe_name { get; init; }
