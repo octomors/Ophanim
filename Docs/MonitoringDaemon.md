@@ -95,9 +95,18 @@ Optional fields:
 
 - exe_name (string): technical executable filename (for process_start/focus_changed)
 - friendly_name (string): process display name from FileDescription when available
-- window_visible (bool): IsWindowVisible(mainWindowHandle), false for tray/minimized hidden cases
+- window_visible (bool): IsWindowVisible(mainWindowHandle), false when main window exists but is not visible
 - window_title (string): Process.MainWindowTitle when available
 - class_name (string): foreground window class for focus_changed
+
+Per-event JSON shape in practice:
+
+- process_start:
+	- event_type, pid, exe_name, friendly_name?, window_visible, window_title?, time
+- process_end:
+	- event_type, pid, time
+- focus_changed:
+	- event_type, pid, exe_name, friendly_name?, window_visible, window_title?, class_name?, time
 
 Examples:
 
@@ -152,8 +161,8 @@ Shutdown sequence:
 This file must be updated in the same change set whenever one of these is modified:
 
 - NDJSON field names/types/semantics
-- Event type codes (t)
+- Event type names (event_type)
 - Timestamp format
 - Log location and rotation rules
-- Data collection scope (cmdline, parent pid, window metadata, exit code)
+- Data collection scope (exe_name, friendly_name, window visibility/title/class, filtering rules)
 
