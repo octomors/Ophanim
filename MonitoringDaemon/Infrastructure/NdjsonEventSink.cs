@@ -95,15 +95,20 @@ internal sealed class NdjsonEventSink : IMonitorEventSink
         Directory.CreateDirectory(dayLogsFolder);
 
         var fileName = $"{DateTimeOffset.Now:yyyy-MM-dd}.ndjson";
-        var filePath = Path.Combine(dayLogsFolder, fileName);
+        var primaryPath = Path.Combine(dayLogsFolder, fileName);
+        var filePath = primaryPath;
 
-        _stream = new FileStream(
-            filePath,
-            FileMode.Append,
-            FileAccess.Write,
-            FileShare.Read,
-            bufferSize: 16 * 1024,
-            FileOptions.WriteThrough);
+        try
+        {
+            _stream = OpenWriteStream(primaryPath);
+        }
+        catch (IOException ex)
+        {
+            // Another process can keep today's file open. Fall back to a per-process file.
+            filePath = Path.Combine(dayLogsFolder, $"{DateTimeOffset.Now:yyyy-MM-dd}.{Environment.ProcessId}.ndjson");
+            _stream = OpenWriteStream(filePath);
+            _logger.LogWarning(ex, "Primary log file is locked, using fallback file {Path}", filePath);
+        }
 
         _writer = new StreamWriter(_stream)
         {
@@ -111,6 +116,17 @@ internal sealed class NdjsonEventSink : IMonitorEventSink
         };
 
         _logger.LogInformation("NDJSON logging initialized at {Path}", filePath);
+    }
+
+    private static FileStream OpenWriteStream(string filePath)
+    {
+        return new FileStream(
+            filePath,
+            FileMode.Append,
+            FileAccess.Write,
+            FileShare.Read,
+            bufferSize: 16 * 1024,
+            FileOptions.WriteThrough);
     }
 
     private void RegisterProcessExitFlush()
