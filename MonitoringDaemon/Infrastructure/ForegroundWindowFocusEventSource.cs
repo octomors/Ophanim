@@ -12,6 +12,9 @@ namespace MonitoringDaemon.Infrastructure;
 internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
 {
     private readonly object _syncLock = new();
+    private readonly ILogger<ForegroundWindowFocusEventSource> _logger;
+    private readonly IEventFilterPolicy _eventFilterPolicy;
+    private readonly int _currentSessionId = Process.GetCurrentProcess().SessionId;
     private IntPtr _winEventHook = IntPtr.Zero;
     private NativeMethods.WinEventDelegate? _callback;
     private Action<EventPayload>? _onEvent;
@@ -19,6 +22,14 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
     private Thread? _hookThread;
     private uint _hookThreadId;
     private TaskCompletionSource<bool>? _hookReady;
+
+    public ForegroundWindowFocusEventSource(
+        ILogger<ForegroundWindowFocusEventSource> logger,
+        IEventFilterPolicy eventFilterPolicy)
+    {
+        _logger = logger;
+        _eventFilterPolicy = eventFilterPolicy;
+    }
 
     /// <inheritdoc />
     public void Start(Action<EventPayload> onEvent)
@@ -112,6 +123,11 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
             return;
         }
 
+        string exeName = "unknown.exe";
+        string? friendlyName = null;
+        bool windowVisible = false;
+        string? windowTitle = null;
+
         lock (_syncLock)
         {
             if (_lastFocusedHwnd == hwnd)
@@ -122,38 +138,69 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
             _lastFocusedHwnd = hwnd;
         }
 
-        string processName = "unknown.exe";
         try
         {
-            processName = EventFormatting.NormalizeProcessName(Process.GetProcessById((int)pid).ProcessName);
+            using var process = Process.GetProcessById((int)pid);
+            process.Refresh();
+
+            if (process.SessionId != _currentSessionId)
+            {
+                return;
+            }
+
+            var mainWindowHandle = process.MainWindowHandle;
+            if (mainWindowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            windowVisible = ProcessNativeMethods.IsWindowVisible(mainWindowHandle);
+            windowTitle = string.IsNullOrWhiteSpace(process.MainWindowTitle) ? null : process.MainWindowTitle;
+
+            exeName = EventFormatting.NormalizeProcessName(process.ProcessName);
+            try
+            {
+                var moduleFileName = process.MainModule?.FileName;
+                if (!string.IsNullOrWhiteSpace(moduleFileName))
+                {
+                    exeName = EventFormatting.NormalizeProcessName(Path.GetFileName(moduleFileName));
+                }
+
+                var description = process.MainModule?.FileVersionInfo?.FileDescription;
+                if (!string.IsNullOrWhiteSpace(description))
+                {
+                    friendlyName = description;
+                }
+            }
+            catch
+            {
+                // Access to MainModule can be denied for some processes.
+            }
         }
         catch
         {
-            // Keep fallback value.
+            // Process can disappear between event and metadata read.
+            return;
         }
+
+        if (_eventFilterPolicy.IsBlacklistedProcess(exeName))
+        {
+            return;
+        }
+
+        var className = GetWindowClassName(hwnd);
 
         _onEvent?.Invoke(new EventPayload
         {
-            t = "wf",
-            a = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow),
-            p = (int)pid,
-            n = processName,
-            w = GetWindowTitle(hwnd),
-            k = GetWindowClassName(hwnd)
+            event_type = "focus_changed",
+            pid = (int)pid,
+            exe_name = exeName,
+            friendly_name = friendlyName,
+            window_visible = windowVisible,
+            window_title = windowTitle,
+            class_name = className,
+            time = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow)
         });
-    }
-
-    private static string? GetWindowTitle(IntPtr hwnd)
-    {
-        var len = NativeMethods.GetWindowTextLength(hwnd);
-        if (len <= 0)
-        {
-            return null;
-        }
-
-        var sb = new StringBuilder(len + 1);
-        var copied = NativeMethods.GetWindowText(hwnd, sb, sb.Capacity);
-        return copied > 0 ? sb.ToString() : null;
     }
 
     private static string? GetWindowClassName(IntPtr hwnd)

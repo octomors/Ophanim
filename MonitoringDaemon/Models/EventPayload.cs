@@ -1,34 +1,31 @@
 namespace MonitoringDaemon.Models;
 
 /// <summary>
-/// Represents one NDJSON monitoring event in compact format.
+/// Represents one NDJSON monitoring event payload.
 /// </summary>
 internal sealed class EventPayload
 {
-    /// <summary>Event type: ps, pe, wf.</summary>
-    public string t { get; init; } = string.Empty;
+    /// <summary>Event type: process_start, process_end, focus_changed.</summary>
+    public string event_type { get; init; } = string.Empty;
 
-    /// <summary>UTC timestamp in yyyy-MM-ddTHH:mm:ssZ format.</summary>
-    public string a { get; init; } = string.Empty;
+    /// <summary>Process identifier.</summary>
+    public int pid { get; init; }
 
-    /// <summary>Process ID.</summary>
-    public int p { get; init; }
+    /// <summary>Technical executable filename.</summary>
+    public string? exe_name { get; init; }
 
-    /// <summary>Process executable name.</summary>
-    public string n { get; init; } = string.Empty;
+    /// <summary>Human-friendly process name from file description.</summary>
+    public string? friendly_name { get; init; }
 
-    /// <summary>Full command line (ps only).</summary>
-    public string? c { get; init; }
+    /// <summary>Whether process main window is visible.</summary>
+    public bool? window_visible { get; init; }
 
-    /// <summary>Parent process ID (ps only).</summary>
-    public int? r { get; init; }
+    /// <summary>Main process window title when available.</summary>
+    public string? window_title { get; init; }
 
-    /// <summary>Window title (wf only).</summary>
-    public string? w { get; init; }
+    /// <summary>Window class for focus_changed events.</summary>
+    public string? class_name { get; init; }
 
-    /// <summary>Window class (wf only).</summary>
-    public string? k { get; init; }
-
-    /// <summary>Exit code (pe only).</summary>
-    public int? x { get; init; }
+    /// <summary>Event timestamp in UTC ISO 8601 format.</summary>
+    public string time { get; init; } = string.Empty;
 }

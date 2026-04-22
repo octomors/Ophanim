@@ -12,8 +12,7 @@ internal sealed class AppDataEventFilterPolicy : IEventFilterPolicy
     private readonly ILogger<AppDataEventFilterPolicy> _logger;
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
 
-    private EventFilterMode _mode = EventFilterMode.Denylist;
-    private HashSet<string> _processes = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _blacklist = new(StringComparer.OrdinalIgnoreCase);
 
     public AppDataEventFilterPolicy(ILogger<AppDataEventFilterPolicy> logger)
     {
@@ -30,8 +29,7 @@ internal sealed class AppDataEventFilterPolicy : IEventFilterPolicy
         {
             var defaultConfig = new EventFilterConfig
             {
-                type = "denylist",
-                processes = []
+                blacklist = []
             };
 
             var json = JsonSerializer.Serialize(defaultConfig, _jsonOptions);
@@ -44,37 +42,46 @@ internal sealed class AppDataEventFilterPolicy : IEventFilterPolicy
             var raw = File.ReadAllText(path);
             var config = JsonSerializer.Deserialize<EventFilterConfig>(raw) ?? new EventFilterConfig();
 
-            _mode = ParseMode(config.type);
-            _processes = (config.processes ?? [])
+            // Backward compatibility: if old schema is present and denylist was used,
+            // reuse processes as blacklist values.
+            var sourceList = config.blacklist;
+            if (sourceList is null && string.Equals(config.type, "denylist", StringComparison.OrdinalIgnoreCase))
+            {
+                sourceList = config.processes;
+            }
+
+            _blacklist = (sourceList ?? [])
                 .Where(p => !string.IsNullOrWhiteSpace(p))
                 .Select(EventFormatting.NormalizeProcessName)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             _logger.LogInformation(
-                "Loaded event filter: mode={Mode}, processes={Count}",
-                _mode,
-                _processes.Count);
+                "Loaded event blacklist: processes={Count}",
+                _blacklist.Count);
         }
         catch (Exception ex)
         {
-            _mode = EventFilterMode.Denylist;
-            _processes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            _logger.LogWarning(ex, "Failed to parse event filter. Fallback to denylist with empty process list.");
+            _blacklist = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            _logger.LogWarning(ex, "Failed to parse event filter. Fallback to empty blacklist.");
         }
+    }
+
+    /// <inheritdoc />
+    public bool IsBlacklistedProcess(string? exeName)
+    {
+        if (string.IsNullOrWhiteSpace(exeName))
+        {
+            return false;
+        }
+
+        var process = EventFormatting.NormalizeProcessName(exeName);
+        return _blacklist.Contains(process);
     }
 
     /// <inheritdoc />
     public bool ShouldWrite(EventPayload evt)
     {
-        var process = EventFormatting.NormalizeProcessName(evt.n);
-        var inList = _processes.Contains(process);
-
-        return _mode switch
-        {
-            EventFilterMode.Allowlist => inList,
-            EventFilterMode.Denylist => !inList,
-            _ => true
-        };
+        return !IsBlacklistedProcess(evt.exe_name);
     }
 
     private static string GetFilterPath()
@@ -83,25 +90,10 @@ internal sealed class AppDataEventFilterPolicy : IEventFilterPolicy
         return Path.Combine(appDataRoot, "Ophanim", "eventFilter.json");
     }
 
-    private static EventFilterMode ParseMode(string? raw)
-    {
-        return raw?.Trim().ToLowerInvariant() switch
-        {
-            "allowlist" => EventFilterMode.Allowlist,
-            "denylist" => EventFilterMode.Denylist,
-            _ => EventFilterMode.Denylist
-        };
-    }
-
-    private enum EventFilterMode
-    {
-        Allowlist,
-        Denylist
-    }
-
     private sealed class EventFilterConfig
     {
         public string? type { get; init; }
         public List<string>? processes { get; init; }
+        public List<string>? blacklist { get; init; }
     }
 }

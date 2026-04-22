@@ -61,23 +61,23 @@ Schema:
 
 ```json
 {
-	"type": "denylist",
-	"processes": ["chrome.exe", "code.exe"]
+	"blacklist": ["chrome.exe", "code.exe"]
 }
 ```
 
 Rules:
 
-- type = allowlist: write only events whose process name (field n) is in processes.
-- type = denylist: write all events except process names listed in processes.
+- Permanent filter is applied immediately on source event capture (before writing):
+	- SessionId must match current daemon session.
+	- MainWindowHandle must be non-zero.
+	- Process must not be in blacklist.
 - Process names are matched case-insensitively and normalized to .exe form.
 
 Default generated file:
 
 ```json
 {
-	"type": "denylist",
-	"processes": []
+	"blacklist": []
 }
 ```
 
@@ -87,28 +87,24 @@ Each line is one JSON object.
 
 Common fields:
 
-- t (string): event type
-	- ps = process_start
-	- pe = process_end
-	- wf = window_focus
-- a (string): UTC timestamp in ISO 8601 with seconds: yyyy-MM-ddTHH:mm:ssZ
-- p (number): process id
-- n (string): process name (exe)
+- event_type (string): process_start | process_end | focus_changed
+- pid (number): process id
+- time (string): UTC timestamp in ISO 8601 with seconds: yyyy-MM-ddTHH:mm:ssZ
 
 Optional fields:
 
-- c (string?): command line, only for ps
-- r (number?): parent pid, only for ps
-- w (string?): window title, only for wf
-- k (string?): window class, only for wf
-- x (number?): exit code, only for pe
+- exe_name (string): technical executable filename (for process_start/focus_changed)
+- friendly_name (string): process display name from FileDescription when available
+- window_visible (bool): IsWindowVisible(mainWindowHandle), false for tray/minimized hidden cases
+- window_title (string): Process.MainWindowTitle when available
+- class_name (string): foreground window class for focus_changed
 
 Examples:
 
 ```json
-{"t":"ps","a":"2026-04-21T13:28:16Z","p":6800,"n":"conhost.exe","c":"\"C:\\Windows\\System32\\conhost.exe\" 0x4","r":5120}
-{"t":"wf","a":"2026-04-21T13:29:01Z","p":22092,"n":"chrome.exe","w":"ChatGPT - Google Chrome","k":"Chrome_WidgetWin_1"}
-{"t":"pe","a":"2026-04-21T13:30:28Z","p":22092,"n":"chrome.exe","x":0}
+{"event_type":"process_start","pid":12345,"exe_name":"chrome.exe","friendly_name":"Google Chrome","window_visible":true,"window_title":"YouTube - Google Chrome","time":"2026-04-21T13:30:00Z"}
+{"event_type":"process_end","pid":12345,"time":"2026-04-21T13:35:00Z"}
+{"event_type":"focus_changed","pid":12345,"exe_name":"chrome.exe","friendly_name":"Google Chrome","window_visible":true,"window_title":"YouTube - Google Chrome","class_name":"Chrome_WidgetWin_1","time":"2026-04-21T13:30:00Z"}
 ```
 
 Notes:

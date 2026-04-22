@@ -13,6 +13,11 @@ internal interface IEventFilterPolicy
     void Load();
 
     /// <summary>
+    /// Returns true when process executable is in configured blacklist.
+    /// </summary>
+    bool IsBlacklistedProcess(string? exeName);
+
+    /// <summary>
     /// Returns true when an event should be written to DayLogs.
     /// </summary>
     bool ShouldWrite(EventPayload evt);
