@@ -48,36 +48,43 @@ Current folder map:
 
 - Root folder: %AppData%\\Ophanim
 - Daily logs folder: %AppData%\\Ophanim\\DayLogs
-- Event filter file: %AppData%\\Ophanim\\eventFilter.json
+- Filter policy folder: %AppData%\\Ophanim\\Settings\\FilterPolicy
+- Filter files:
+	- processLifecycle.whitelist.json
+	- processLifecycle.blacklist.json
+	- focusChanged.whitelist.json
+	- focusChanged.blacklist.json
 - File naming: yyyy-MM-dd.ndjson
 - Mode: append-only
 
 ## Event Filter
 
-At daemon startup, event filter config is loaded from %AppData%\\Ophanim\\eventFilter.json.
-If the file does not exist, daemon creates it with default content.
+At daemon startup, filter policy config is loaded from %AppData%\\Ophanim\\Settings\\FilterPolicy.
+If files do not exist, daemon creates them with default content.
 
-Schema:
+Each file schema:
 
 ```json
 {
-	"blacklist": ["chrome.exe", "code.exe"]
+	"processes": ["chrome.exe", "code.exe"]
 }
 ```
 
 Rules:
 
-- Permanent filter is applied immediately on source event capture (before writing):
-	- SessionId must match current daemon session.
-	- MainWindowHandle must be non-zero.
-	- Process must not be in blacklist.
+- `processLifecycle.*` applies to `process_start` / `process_end` handlers.
+- `focusChanged.*` applies to `focus_changed` handler.
+- Filtering order inside handlers:
+	1. If process is in whitelist: save event.
+	2. Else if process is in blacklist: drop event.
+	3. Else apply remaining hardcoded checks (for example, SessionId / MainWindowHandle checks).
 - Process names are matched case-insensitively and normalized to .exe form.
 
-Default generated file:
+Default generated content for each file:
 
 ```json
 {
-	"blacklist": []
+	"processes": []
 }
 ```
 

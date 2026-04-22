@@ -43,14 +43,18 @@ internal sealed class ProcessWmiEventSource : IMonitorEventSource
             }
 
             var snapshot = BuildSnapshot(processId, Convert.ToString(e.NewEvent?["ProcessName"]));
-            if (snapshot.MainWindowHandle == IntPtr.Zero)
+            var isWhitelisted = _eventFilterPolicy.IsWhitelistedProcess(snapshot.ExeName, EventFilterScope.ProcessLifecycle);
+            if (!isWhitelisted)
             {
-                return;
-            }
+                if (_eventFilterPolicy.IsBlacklistedProcess(snapshot.ExeName, EventFilterScope.ProcessLifecycle))
+                {
+                    return;
+                }
 
-            if (_eventFilterPolicy.IsBlacklistedProcess(snapshot.ExeName))
-            {
-                return;
+                if (snapshot.MainWindowHandle == IntPtr.Zero)
+                {
+                    return;
+                }
             }
 
             _snapshotByPid[processId] = snapshot;

@@ -143,20 +143,6 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
             using var process = Process.GetProcessById((int)pid);
             process.Refresh();
 
-            if (process.SessionId != _currentSessionId)
-            {
-                return;
-            }
-
-            var mainWindowHandle = process.MainWindowHandle;
-            if (mainWindowHandle == IntPtr.Zero)
-            {
-                return;
-            }
-
-            windowVisible = ProcessNativeMethods.IsWindowVisible(mainWindowHandle);
-            windowTitle = string.IsNullOrWhiteSpace(process.MainWindowTitle) ? null : process.MainWindowTitle;
-
             exeName = EventFormatting.NormalizeProcessName(process.ProcessName);
             try
             {
@@ -176,15 +162,43 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
             {
                 // Access to MainModule can be denied for some processes.
             }
+
+            var isWhitelisted = _eventFilterPolicy.IsWhitelistedProcess(exeName, EventFilterScope.FocusChanged);
+            if (!isWhitelisted)
+            {
+                if (_eventFilterPolicy.IsBlacklistedProcess(exeName, EventFilterScope.FocusChanged))
+                {
+                    return;
+                }
+
+                if (process.SessionId != _currentSessionId)
+                {
+                    return;
+                }
+
+                var mainWindowHandle = process.MainWindowHandle;
+                if (mainWindowHandle == IntPtr.Zero)
+                {
+                    return;
+                }
+
+                windowVisible = ProcessNativeMethods.IsWindowVisible(mainWindowHandle);
+                windowTitle = string.IsNullOrWhiteSpace(process.MainWindowTitle) ? null : process.MainWindowTitle;
+            }
+            else
+            {
+                var mainWindowHandle = process.MainWindowHandle;
+                if (mainWindowHandle != IntPtr.Zero)
+                {
+                    windowVisible = ProcessNativeMethods.IsWindowVisible(mainWindowHandle);
+                }
+
+                windowTitle = string.IsNullOrWhiteSpace(process.MainWindowTitle) ? null : process.MainWindowTitle;
+            }
         }
         catch
         {
             // Process can disappear between event and metadata read.
-            return;
-        }
-
-        if (_eventFilterPolicy.IsBlacklistedProcess(exeName))
-        {
             return;
         }
 

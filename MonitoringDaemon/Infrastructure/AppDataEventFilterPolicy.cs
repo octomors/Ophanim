@@ -12,7 +12,10 @@ internal sealed class AppDataEventFilterPolicy : IEventFilterPolicy
     private readonly ILogger<AppDataEventFilterPolicy> _logger;
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
 
-    private HashSet<string> _blacklist = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _processLifecycleWhitelist = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _processLifecycleBlacklist = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _focusChangedWhitelist = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _focusChangedBlacklist = new(StringComparer.OrdinalIgnoreCase);
 
     public AppDataEventFilterPolicy(ILogger<AppDataEventFilterPolicy> logger)
     {
@@ -22,78 +25,143 @@ internal sealed class AppDataEventFilterPolicy : IEventFilterPolicy
     /// <inheritdoc />
     public void Load()
     {
-        var path = GetFilterPath();
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var policyDirectory = GetFilterPolicyDirectory();
+        Directory.CreateDirectory(policyDirectory);
 
-        if (!File.Exists(path))
-        {
-            var defaultConfig = new EventFilterConfig
-            {
-                blacklist = []
-            };
+        _processLifecycleWhitelist = LoadProcessSet(
+            Path.Combine(policyDirectory, "processLifecycle.whitelist.json"),
+            "process lifecycle whitelist");
 
-            var json = JsonSerializer.Serialize(defaultConfig, _jsonOptions);
-            File.WriteAllText(path, json);
-            _logger.LogInformation("Created default event filter at {Path}", path);
-        }
+        _processLifecycleBlacklist = LoadProcessSet(
+            Path.Combine(policyDirectory, "processLifecycle.blacklist.json"),
+            "process lifecycle blacklist");
 
-        try
-        {
-            var raw = File.ReadAllText(path);
-            var config = JsonSerializer.Deserialize<EventFilterConfig>(raw) ?? new EventFilterConfig();
+        _focusChangedWhitelist = LoadProcessSet(
+            Path.Combine(policyDirectory, "focusChanged.whitelist.json"),
+            "focus_changed whitelist");
 
-            // Backward compatibility: if old schema is present and denylist was used,
-            // reuse processes as blacklist values.
-            var sourceList = config.blacklist;
-            if (sourceList is null && string.Equals(config.type, "denylist", StringComparison.OrdinalIgnoreCase))
-            {
-                sourceList = config.processes;
-            }
+        _focusChangedBlacklist = LoadProcessSet(
+            Path.Combine(policyDirectory, "focusChanged.blacklist.json"),
+            "focus_changed blacklist");
 
-            _blacklist = (sourceList ?? [])
-                .Where(p => !string.IsNullOrWhiteSpace(p))
-                .Select(EventFormatting.NormalizeProcessName)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            _logger.LogInformation(
-                "Loaded event blacklist: processes={Count}",
-                _blacklist.Count);
-        }
-        catch (Exception ex)
-        {
-            _blacklist = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            _logger.LogWarning(ex, "Failed to parse event filter. Fallback to empty blacklist.");
-        }
+        _logger.LogInformation(
+            "Loaded filter policy: processWhitelist={ProcessWhitelist}, processBlacklist={ProcessBlacklist}, focusWhitelist={FocusWhitelist}, focusBlacklist={FocusBlacklist}",
+            _processLifecycleWhitelist.Count,
+            _processLifecycleBlacklist.Count,
+            _focusChangedWhitelist.Count,
+            _focusChangedBlacklist.Count);
     }
 
     /// <inheritdoc />
-    public bool IsBlacklistedProcess(string? exeName)
+    public bool IsWhitelistedProcess(string? exeName, EventFilterScope scope)
     {
-        if (string.IsNullOrWhiteSpace(exeName))
-        {
-            return false;
-        }
+        var process = NormalizeOrNull(exeName);
+        return process is not null && GetWhitelist(scope).Contains(process);
+    }
 
-        var process = EventFormatting.NormalizeProcessName(exeName);
-        return _blacklist.Contains(process);
+    /// <inheritdoc />
+    public bool IsBlacklistedProcess(string? exeName, EventFilterScope scope)
+    {
+        var process = NormalizeOrNull(exeName);
+        return process is not null && GetBlacklist(scope).Contains(process);
     }
 
     /// <inheritdoc />
     public bool ShouldWrite(EventPayload evt)
     {
-        return !IsBlacklistedProcess(evt.exe_name);
+        if (TryResolveScope(evt.event_type, out var scope))
+        {
+            if (IsWhitelistedProcess(evt.exe_name, scope))
+            {
+                return true;
+            }
+
+            if (IsBlacklistedProcess(evt.exe_name, scope))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
-    private static string GetFilterPath()
+    private HashSet<string> LoadProcessSet(string path, string label)
+    {
+        if (!File.Exists(path))
+        {
+            var json = JsonSerializer.Serialize(new ProcessFilterListConfig { processes = [] }, _jsonOptions);
+            File.WriteAllText(path, json);
+            _logger.LogInformation("Created default {Label} at {Path}", label, path);
+        }
+
+        try
+        {
+            var raw = File.ReadAllText(path);
+            var config = JsonSerializer.Deserialize<ProcessFilterListConfig>(raw) ?? new ProcessFilterListConfig();
+
+            return (config.processes ?? [])
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(EventFormatting.NormalizeProcessName)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse {Label}. Fallback to empty list.", label);
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private HashSet<string> GetWhitelist(EventFilterScope scope)
+    {
+        return scope == EventFilterScope.FocusChanged
+            ? _focusChangedWhitelist
+            : _processLifecycleWhitelist;
+    }
+
+    private HashSet<string> GetBlacklist(EventFilterScope scope)
+    {
+        return scope == EventFilterScope.FocusChanged
+            ? _focusChangedBlacklist
+            : _processLifecycleBlacklist;
+    }
+
+    private static bool TryResolveScope(string eventType, out EventFilterScope scope)
+    {
+        if (string.Equals(eventType, "focus_changed", StringComparison.Ordinal))
+        {
+            scope = EventFilterScope.FocusChanged;
+            return true;
+        }
+
+        if (string.Equals(eventType, "process_start", StringComparison.Ordinal) ||
+            string.Equals(eventType, "process_end", StringComparison.Ordinal))
+        {
+            scope = EventFilterScope.ProcessLifecycle;
+            return true;
+        }
+
+        scope = default;
+        return false;
+    }
+
+    private static string? NormalizeOrNull(string? exeName)
+    {
+        if (string.IsNullOrWhiteSpace(exeName))
+        {
+            return null;
+        }
+
+        return EventFormatting.NormalizeProcessName(exeName);
+    }
+
+    private static string GetFilterPolicyDirectory()
     {
         var appDataRoot = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        return Path.Combine(appDataRoot, "Ophanim", "eventFilter.json");
+        return Path.Combine(appDataRoot, "Ophanim", "Settings", "FilterPolicy");
     }
 
-    private sealed class EventFilterConfig
+    private sealed class ProcessFilterListConfig
     {
-        public string? type { get; init; }
         public List<string>? processes { get; init; }
-        public List<string>? blacklist { get; init; }
     }
 }

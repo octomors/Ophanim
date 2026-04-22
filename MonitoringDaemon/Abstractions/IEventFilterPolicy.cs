@@ -13,9 +13,14 @@ internal interface IEventFilterPolicy
     void Load();
 
     /// <summary>
-    /// Returns true when process executable is in configured blacklist.
+    /// Returns true when process executable is in configured whitelist for a scope.
     /// </summary>
-    bool IsBlacklistedProcess(string? exeName);
+    bool IsWhitelistedProcess(string? exeName, EventFilterScope scope);
+
+    /// <summary>
+    /// Returns true when process executable is in configured blacklist for a scope.
+    /// </summary>
+    bool IsBlacklistedProcess(string? exeName, EventFilterScope scope);
 
     /// <summary>
     /// Returns true when an event should be written to DayLogs.
