@@ -19,6 +19,7 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
     private NativeMethods.WinEventDelegate? _callback;
     private Action<EventPayload>? _onEvent;
     private IntPtr _lastFocusedHwnd = IntPtr.Zero;
+    private EventPayload? _lastEmittedFocusEvent;
     private Thread? _hookThread;
     private uint _hookThreadId;
     private TaskCompletionSource<bool>? _hookReady;
@@ -204,7 +205,7 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
 
         var className = GetWindowClassName(hwnd);
 
-        _onEvent?.Invoke(new EventPayload
+        var payload = new EventPayload
         {
             event_type = "focus_changed",
             pid = (int)pid,
@@ -214,7 +215,19 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
             window_title = windowTitle,
             class_name = className,
             time = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow)
-        });
+        };
+
+        lock (_syncLock)
+        {
+            if (IsDuplicateFocusEvent(_lastEmittedFocusEvent, payload))
+            {
+                return;
+            }
+
+            _lastEmittedFocusEvent = payload;
+        }
+
+        _onEvent?.Invoke(payload);
     }
 
     private static string? GetWindowClassName(IntPtr hwnd)
@@ -222,6 +235,22 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
         var sb = new StringBuilder(256);
         var copied = NativeMethods.GetClassName(hwnd, sb, sb.Capacity);
         return copied > 0 ? sb.ToString() : null;
+    }
+
+    private static bool IsDuplicateFocusEvent(EventPayload? previous, EventPayload current)
+    {
+        if (previous is null)
+        {
+            return false;
+        }
+
+        return string.Equals(previous.event_type, current.event_type, StringComparison.Ordinal) &&
+               previous.pid == current.pid &&
+               string.Equals(previous.exe_name, current.exe_name, StringComparison.Ordinal) &&
+               string.Equals(previous.friendly_name, current.friendly_name, StringComparison.Ordinal) &&
+               previous.window_visible == current.window_visible &&
+               string.Equals(previous.window_title, current.window_title, StringComparison.Ordinal) &&
+               string.Equals(previous.class_name, current.class_name, StringComparison.Ordinal);
     }
 }
 
