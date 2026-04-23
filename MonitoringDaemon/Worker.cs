@@ -48,7 +48,7 @@ internal sealed class Worker : BackgroundService
         AppendIfAllowed(new Models.EventPayload
         {
             event_type = "logon",
-            time = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow)
+            time = EventFormatting.ToIsoLocalSeconds(DateTimeOffset.Now)
         });
 
         foreach (var source in _eventSources)
@@ -115,7 +115,7 @@ internal sealed class Worker : BackgroundService
         _sink.Append(new Models.EventPayload
         {
             event_type = "logout",
-            time = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow)
+            time = EventFormatting.ToIsoLocalSeconds(DateTimeOffset.Now)
         });
     }
 }

@@ -67,7 +67,7 @@ internal sealed class ProcessWmiEventSource : IMonitorEventSource
                 exe_name = snapshot.ExeName,
                 window_visible = snapshot.WindowVisible,
                 window_title = snapshot.WindowTitle,
-                time = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow)
+                time = EventFormatting.ToIsoLocalSeconds(DateTimeOffset.Now)
             });
         };
 
@@ -91,7 +91,7 @@ internal sealed class ProcessWmiEventSource : IMonitorEventSource
             {
                 event_type = "process_end",
                 pid = processId,
-                time = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow)
+                time = EventFormatting.ToIsoLocalSeconds(DateTimeOffset.Now)
             });
         };
 

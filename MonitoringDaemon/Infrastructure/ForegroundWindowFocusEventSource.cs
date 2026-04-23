@@ -214,7 +214,7 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
             window_visible = windowVisible,
             window_title = windowTitle,
             class_name = className,
-            time = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow)
+            time = EventFormatting.ToIsoLocalSeconds(DateTimeOffset.Now)
         };
 
         lock (_syncLock)

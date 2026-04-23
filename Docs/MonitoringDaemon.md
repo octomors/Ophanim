@@ -96,7 +96,7 @@ Common fields:
 
 - event_type (string): process_start | process_end | focus_changed | logon | logout
 - pid (number): process id
-- time (string): UTC timestamp in ISO 8601 with seconds: yyyy-MM-ddTHH:mm:ssZ
+- time (string): local timestamp in ISO 8601 with seconds and timezone offset: yyyy-MM-ddTHH:mm:sszzz
 
 Optional fields:
 
@@ -122,17 +122,17 @@ Per-event JSON shape in practice:
 Examples:
 
 ```json
-{"event_type":"logon","time":"2026-04-21T09:00:00Z"}
-{"event_type":"process_start","pid":12345,"exe_name":"chrome.exe","friendly_name":"Google Chrome","window_visible":true,"window_title":"YouTube - Google Chrome","time":"2026-04-21T13:30:00Z"}
-{"event_type":"process_end","pid":12345,"time":"2026-04-21T13:35:00Z"}
-{"event_type":"focus_changed","pid":12345,"exe_name":"chrome.exe","friendly_name":"Google Chrome","window_visible":true,"window_title":"YouTube - Google Chrome","class_name":"Chrome_WidgetWin_1","time":"2026-04-21T13:30:00Z"}
-{"event_type":"logout","time":"2026-04-21T18:00:00Z"}
+{"event_type":"logon","time":"2026-04-21T12:00:00+03:00"}
+{"event_type":"process_start","pid":12345,"exe_name":"chrome.exe","friendly_name":"Google Chrome","window_visible":true,"window_title":"YouTube - Google Chrome","time":"2026-04-21T16:30:00+03:00"}
+{"event_type":"process_end","pid":12345,"time":"2026-04-21T16:35:00+03:00"}
+{"event_type":"focus_changed","pid":12345,"exe_name":"chrome.exe","friendly_name":"Google Chrome","window_visible":true,"window_title":"YouTube - Google Chrome","class_name":"Chrome_WidgetWin_1","time":"2026-04-21T16:30:00+03:00"}
+{"event_type":"logout","time":"2026-04-21T21:00:00+03:00"}
 ```
 
 Notes:
 
 - Null optional fields are omitted from output.
-- Timestamps are normalized to UTC with second precision.
+- Timestamps use local machine time with second precision and timezone offset.
 
 ## Reliability
 
