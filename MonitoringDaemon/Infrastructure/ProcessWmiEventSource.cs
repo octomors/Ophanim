@@ -51,10 +51,10 @@ internal sealed class ProcessWmiEventSource : IMonitorEventSource
                     return;
                 }
 
-                //if (snapshot.MainWindowHandle == IntPtr.Zero)
-                //{
-                //    return;
-                //}
+                if (snapshot.MainWindowHandle == IntPtr.Zero)
+                {
+                    return;
+                }
             }
 
             _snapshotByPid[processId] = snapshot;
