@@ -5,7 +5,7 @@ namespace MonitoringDaemon.Models;
 /// </summary>
 internal sealed class EventPayload
 {
-    /// <summary>Event type: process_start, process_end, focus_changed.</summary>
+    /// <summary>Event type: process_start, process_end, focus_changed, logon, logout.</summary>
     public string event_type { get; init; } = string.Empty;
 
     /// <summary>Process identifier when the event is process-related.</summary>

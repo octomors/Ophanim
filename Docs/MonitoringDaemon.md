@@ -94,7 +94,7 @@ Each line is one JSON object.
 
 Common fields:
 
-- event_type (string): process_start | process_end | focus_changed
+- event_type (string): process_start | process_end | focus_changed | logon | logout
 - pid (number): process id
 - time (string): UTC timestamp in ISO 8601 with seconds: yyyy-MM-ddTHH:mm:ssZ
 
@@ -108,6 +108,10 @@ Optional fields:
 
 Per-event JSON shape in practice:
 
+- logon:
+	- event_type, time
+- logout:
+	- event_type, time
 - process_start:
 	- event_type, pid, exe_name, friendly_name?, window_visible, window_title?, time
 - process_end:
@@ -118,9 +122,11 @@ Per-event JSON shape in practice:
 Examples:
 
 ```json
+{"event_type":"logon","time":"2026-04-21T09:00:00Z"}
 {"event_type":"process_start","pid":12345,"exe_name":"chrome.exe","friendly_name":"Google Chrome","window_visible":true,"window_title":"YouTube - Google Chrome","time":"2026-04-21T13:30:00Z"}
 {"event_type":"process_end","pid":12345,"time":"2026-04-21T13:35:00Z"}
 {"event_type":"focus_changed","pid":12345,"exe_name":"chrome.exe","friendly_name":"Google Chrome","window_visible":true,"window_title":"YouTube - Google Chrome","class_name":"Chrome_WidgetWin_1","time":"2026-04-21T13:30:00Z"}
+{"event_type":"logout","time":"2026-04-21T18:00:00Z"}
 ```
 
 Notes:
@@ -154,8 +160,9 @@ Startup sequence:
 Shutdown sequence:
 
 1. Stop and dispose native event subscriptions.
-2. Force flush pending data to disk.
-3. Dispose writer/stream safely.
+2. Write `logout` event once (including session-end/PC shutdown path).
+3. Force flush pending data to disk.
+4. Dispose writer/stream safely.
 
 ## Boundaries
 

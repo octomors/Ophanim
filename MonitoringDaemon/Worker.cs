@@ -13,6 +13,7 @@ internal sealed class Worker : BackgroundService
     private readonly IEventFilterPolicy _eventFilterPolicy;
     private readonly IEnumerable<IMonitorEventSource> _eventSources;
     private readonly SessionEndMonitor _sessionEndMonitor;
+    private int _logoutWritten;
 
     /// <summary>
     /// Creates a worker that orchestrates all monitoring components.
@@ -38,7 +39,11 @@ internal sealed class Worker : BackgroundService
     {
         _eventFilterPolicy.Load();
         _sink.Start();
-        _sessionEndMonitor.Start(() => _sink.FlushToDisk());
+        _sessionEndMonitor.Start(() =>
+        {
+            WriteLogoutEventOnce();
+            _sink.FlushToDisk();
+        });
 
         AppendIfAllowed(new Models.EventPayload
         {
@@ -79,6 +84,8 @@ internal sealed class Worker : BackgroundService
 
         _sessionEndMonitor.Stop();
 
+        WriteLogoutEventOnce();
+
         foreach (var source in _eventSources)
         {
             source.Stop();
@@ -96,5 +103,19 @@ internal sealed class Worker : BackgroundService
         {
             _sink.Append(evt);
         }
+    }
+
+    private void WriteLogoutEventOnce()
+    {
+        if (System.Threading.Interlocked.Exchange(ref _logoutWritten, 1) != 0)
+        {
+            return;
+        }
+
+        _sink.Append(new Models.EventPayload
+        {
+            event_type = "logout",
+            time = EventFormatting.ToIsoUtcSeconds(DateTimeOffset.UtcNow)
+        });
     }
 }
