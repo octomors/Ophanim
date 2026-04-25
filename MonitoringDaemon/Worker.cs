@@ -1,5 +1,6 @@
 using MonitoringDaemon.Abstractions;
 using MonitoringDaemon.Infrastructure;
+using Microsoft.Extensions.Options;
 
 namespace MonitoringDaemon;
 
@@ -13,6 +14,8 @@ internal sealed class Worker : BackgroundService
     private readonly IEventFilterPolicy _eventFilterPolicy;
     private readonly IEnumerable<IMonitorEventSource> _eventSources;
     private readonly SessionEndMonitor _sessionEndMonitor;
+    private readonly IHostApplicationLifetime _hostApplicationLifetime;
+    private readonly MonitoringRuntimeOptions _runtimeOptions;
     private int _logoutWritten;
 
     /// <summary>
@@ -23,13 +26,17 @@ internal sealed class Worker : BackgroundService
         IMonitorEventSink sink,
         IEventFilterPolicy eventFilterPolicy,
         IEnumerable<IMonitorEventSource> eventSources,
-        SessionEndMonitor sessionEndMonitor)
+        SessionEndMonitor sessionEndMonitor,
+        IHostApplicationLifetime hostApplicationLifetime,
+        IOptions<MonitoringRuntimeOptions> runtimeOptions)
     {
         _logger = logger;
         _sink = sink;
         _eventFilterPolicy = eventFilterPolicy;
         _eventSources = eventSources;
         _sessionEndMonitor = sessionEndMonitor;
+        _hostApplicationLifetime = hostApplicationLifetime;
+        _runtimeOptions = runtimeOptions.Value;
     }
 
     /// <summary>
@@ -45,11 +52,7 @@ internal sealed class Worker : BackgroundService
             _sink.FlushToDisk();
         });
 
-        AppendIfAllowed(new Models.EventPayload
-        {
-            event_type = "logon",
-            time = EventFormatting.ToIsoLocalSeconds(DateTimeOffset.Now)
-        });
+        var sourceStartFailed = false;
 
         foreach (var source in _eventSources)
         {
@@ -59,9 +62,23 @@ internal sealed class Worker : BackgroundService
             }
             catch (Exception ex)
             {
+                sourceStartFailed = true;
                 _logger.LogError(ex, "Failed to start event source {SourceType}", source.GetType().Name);
             }
         }
+
+        if (sourceStartFailed && _runtimeOptions.FailFastOnSourceStartFailure)
+        {
+            _logger.LogCritical("Stopping daemon due to event source startup failure (Monitoring:FailFastOnSourceStartFailure=true).");
+            _hostApplicationLifetime.StopApplication();
+            return;
+        }
+
+        AppendIfAllowed(new Models.EventPayload
+        {
+            event_type = "logon",
+            time = EventFormatting.ToIsoLocalSeconds(DateTimeOffset.Now)
+        });
 
         _logger.LogInformation("Monitoring daemon started.");
 
@@ -88,7 +105,23 @@ internal sealed class Worker : BackgroundService
 
         foreach (var source in _eventSources)
         {
-            source.Stop();
+            try
+            {
+                source.Stop();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to stop event source {SourceType}", source.GetType().Name);
+            }
+
+            try
+            {
+                source.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to dispose event source {SourceType}", source.GetType().Name);
+            }
         }
 
         _sink.FlushToDisk();

@@ -1,5 +1,4 @@
 using System.Management;
-using System.Runtime.InteropServices;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using MonitoringDaemon.Abstractions;
@@ -14,17 +13,25 @@ internal sealed class ProcessWmiEventSource : IMonitorEventSource
 {
     private readonly ILogger<ProcessWmiEventSource> _logger;
     private readonly IEventFilterPolicy _eventFilterPolicy;
+    private readonly IWmiEventWatcherFactory _wmiWatcherFactory;
+    private readonly IProcessMetadataReader _processMetadataReader;
     private readonly ConcurrentDictionary<int, ProcessSnapshot> _snapshotByPid = new();
     private readonly int _currentSessionId = Process.GetCurrentProcess().SessionId;
 
-    private ManagementEventWatcher? _processStartWatcher;
-    private ManagementEventWatcher? _processStopWatcher;
+    private IWmiEventWatcher? _processStartWatcher;
+    private IWmiEventWatcher? _processStopWatcher;
     private Action<EventPayload>? _onEvent;
 
-    public ProcessWmiEventSource(ILogger<ProcessWmiEventSource> logger, IEventFilterPolicy eventFilterPolicy)
+    public ProcessWmiEventSource(
+        ILogger<ProcessWmiEventSource> logger,
+        IEventFilterPolicy eventFilterPolicy,
+        IWmiEventWatcherFactory wmiWatcherFactory,
+        IProcessMetadataReader processMetadataReader)
     {
         _logger = logger;
         _eventFilterPolicy = eventFilterPolicy;
+        _wmiWatcherFactory = wmiWatcherFactory;
+        _processMetadataReader = processMetadataReader;
     }
 
     /// <inheritdoc />
@@ -32,68 +39,11 @@ internal sealed class ProcessWmiEventSource : IMonitorEventSource
     {
         _onEvent = onEvent;
 
-        _processStartWatcher = new ManagementEventWatcher(new WqlEventQuery("SELECT * FROM Win32_ProcessStartTrace"));
-        _processStartWatcher.EventArrived += (_, e) =>
-        {
-            var processId = Convert.ToInt32(e.NewEvent?["ProcessID"] ?? 0);
-            var sessionId = EventFormatting.TryGetNullableInt(e.NewEvent?["SessionID"]);
-            if (sessionId.HasValue && sessionId.Value != _currentSessionId)
-            {
-                return;
-            }
+        _processStartWatcher = _wmiWatcherFactory.Create("SELECT * FROM Win32_ProcessStartTrace");
+        _processStartWatcher.EventArrived += (_, e) => HandleProcessStart(e);
 
-            var snapshot = BuildSnapshot(processId, Convert.ToString(e.NewEvent?["ProcessName"]));
-            var isWhitelisted = _eventFilterPolicy.IsWhitelistedProcess(snapshot.ExeName, EventFilterScope.ProcessLifecycle);
-            if (!isWhitelisted)
-            {
-                if (_eventFilterPolicy.IsBlacklistedProcess(snapshot.ExeName, EventFilterScope.ProcessLifecycle))
-                {
-                    return;
-                }
-
-                if (snapshot.MainWindowHandle == IntPtr.Zero)
-                {
-                    return;
-                }
-            }
-
-            _snapshotByPid[processId] = snapshot;
-
-            _onEvent?.Invoke(new EventPayload
-            {
-                event_type = "process_start",
-                pid = processId,
-                friendly_name = snapshot.FriendlyName,
-                exe_name = snapshot.ExeName,
-                window_visible = snapshot.WindowVisible,
-                window_title = snapshot.WindowTitle,
-                time = EventFormatting.ToIsoLocalSeconds(DateTimeOffset.Now)
-            });
-        };
-
-        _processStopWatcher = new ManagementEventWatcher(new WqlEventQuery("SELECT * FROM Win32_ProcessStopTrace"));
-        _processStopWatcher.EventArrived += (_, e) =>
-        {
-            var processId = Convert.ToInt32(e.NewEvent?["ProcessID"] ?? 0);
-            var hasCachedSnapshot = _snapshotByPid.TryRemove(processId, out var cached);
-            if (!hasCachedSnapshot)
-            {
-                var sessionId = EventFormatting.TryGetNullableInt(e.NewEvent?["SessionID"]);
-                if (sessionId.HasValue && sessionId.Value != _currentSessionId)
-                {
-                    return;
-                }
-
-                return;
-            }
-
-            _onEvent?.Invoke(new EventPayload
-            {
-                event_type = "process_end",
-                pid = processId,
-                time = EventFormatting.ToIsoLocalSeconds(DateTimeOffset.Now)
-            });
-        };
+        _processStopWatcher = _wmiWatcherFactory.Create("SELECT * FROM Win32_ProcessStopTrace");
+        _processStopWatcher.EventArrived += (_, e) => HandleProcessStop(e);
 
         _processStartWatcher.Start();
         _processStopWatcher.Start();
@@ -122,57 +72,85 @@ internal sealed class ProcessWmiEventSource : IMonitorEventSource
         Stop();
     }
 
-    private static ProcessSnapshot BuildSnapshot(int pid, string? fallbackProcessName)
+    private void HandleProcessStart(EventArrivedEventArgs e)
     {
-        var exeName = EventFormatting.NormalizeProcessName(fallbackProcessName);
-        string? friendlyName = null;
-        var windowVisible = false;
-        string? windowTitle = null;
-        var mainWindowHandle = IntPtr.Zero;
-
         try
         {
-            using var process = Process.GetProcessById(pid);
-            process.Refresh();
-
-            if (!string.IsNullOrWhiteSpace(process.ProcessName))
+            var processId = Convert.ToInt32(e.NewEvent?["ProcessID"] ?? 0);
+            var sessionId = EventFormatting.TryGetNullableInt(e.NewEvent?["SessionID"]);
+            if (sessionId.HasValue && sessionId.Value != _currentSessionId)
             {
-                exeName = EventFormatting.NormalizeProcessName(process.ProcessName);
+                return;
             }
 
-            try
+            var snapshotData = _processMetadataReader.Read(processId, Convert.ToString(e.NewEvent?["ProcessName"]));
+            var snapshot = new ProcessSnapshot(
+                snapshotData.ExeName,
+                snapshotData.FriendlyName,
+                snapshotData.WindowVisible,
+                snapshotData.WindowTitle,
+                snapshotData.MainWindowHandle);
+            var isWhitelisted = _eventFilterPolicy.IsWhitelistedProcess(snapshot.ExeName, EventFilterScope.ProcessLifecycle);
+            if (!isWhitelisted)
             {
-                var moduleFileName = process.MainModule?.FileName;
-                if (!string.IsNullOrWhiteSpace(moduleFileName))
+                if (_eventFilterPolicy.IsBlacklistedProcess(snapshot.ExeName, EventFilterScope.ProcessLifecycle))
                 {
-                    exeName = EventFormatting.NormalizeProcessName(Path.GetFileName(moduleFileName));
+                    return;
                 }
 
-                var description = process.MainModule?.FileVersionInfo?.FileDescription;
-                if (!string.IsNullOrWhiteSpace(description))
+                if (snapshot.MainWindowHandle == IntPtr.Zero)
                 {
-                    friendlyName = description;
+                    return;
                 }
             }
-            catch
-            {
-                // Access to MainModule can be denied for some processes.
-            }
 
-            mainWindowHandle = process.MainWindowHandle;
-            if (mainWindowHandle != IntPtr.Zero)
-            {
-                windowVisible = ProcessNativeMethods.IsWindowVisible(mainWindowHandle);
-            }
+            _snapshotByPid[processId] = snapshot;
 
-            windowTitle = string.IsNullOrWhiteSpace(process.MainWindowTitle) ? null : process.MainWindowTitle;
+            _onEvent?.Invoke(new EventPayload
+            {
+                event_type = "process_start",
+                pid = processId,
+                friendly_name = snapshot.FriendlyName,
+                exe_name = snapshot.ExeName,
+                window_visible = snapshot.WindowVisible,
+                window_title = snapshot.WindowTitle,
+                time = EventFormatting.ToIsoLocalSeconds(DateTimeOffset.Now)
+            });
         }
-        catch
+        catch (Exception ex)
         {
-            // Process can disappear between WMI event and metadata read.
+            _logger.LogWarning(ex, "Process start event handler failed; event skipped.");
         }
+    }
 
-        return new ProcessSnapshot(exeName, friendlyName, windowVisible, windowTitle, mainWindowHandle);
+    private void HandleProcessStop(EventArrivedEventArgs e)
+    {
+        try
+        {
+            var processId = Convert.ToInt32(e.NewEvent?["ProcessID"] ?? 0);
+            var hasCachedSnapshot = _snapshotByPid.TryRemove(processId, out _);
+            if (!hasCachedSnapshot)
+            {
+                var sessionId = EventFormatting.TryGetNullableInt(e.NewEvent?["SessionID"]);
+                if (sessionId.HasValue && sessionId.Value != _currentSessionId)
+                {
+                    return;
+                }
+
+                return;
+            }
+
+            _onEvent?.Invoke(new EventPayload
+            {
+                event_type = "process_end",
+                pid = processId,
+                time = EventFormatting.ToIsoLocalSeconds(DateTimeOffset.Now)
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Process stop event handler failed; event skipped.");
+        }
     }
 
     private sealed record ProcessSnapshot(
@@ -181,11 +159,4 @@ internal sealed class ProcessWmiEventSource : IMonitorEventSource
         bool WindowVisible,
         string? WindowTitle,
         IntPtr MainWindowHandle);
-}
-
-internal static class ProcessNativeMethods
-{
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool IsWindowVisible(IntPtr hWnd);
 }

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.Extensions.Options;
 
 namespace MonitoringDaemon.Infrastructure;
 
@@ -7,11 +8,17 @@ namespace MonitoringDaemon.Infrastructure;
 /// </summary>
 internal sealed class SessionEndMonitor : IDisposable
 {
+    private readonly MonitoringRuntimeOptions _runtimeOptions;
     private Thread? _thread;
     private uint _threadId;
     private TaskCompletionSource<bool>? _ready;
     private SessionNativeMethods.WndProcDelegate? _wndProc;
     private Action? _onEndSession;
+
+    public SessionEndMonitor(IOptions<MonitoringRuntimeOptions> runtimeOptions)
+    {
+        _runtimeOptions = runtimeOptions.Value;
+    }
 
     /// <summary>
     /// Starts session-end monitoring.
@@ -93,7 +100,7 @@ internal sealed class SessionEndMonitor : IDisposable
 
         if (_thread is not null && _thread.IsAlive)
         {
-            _thread.Join(TimeSpan.FromSeconds(2));
+            _thread.Join(TimeSpan.FromSeconds(_runtimeOptions.SessionMonitorStopTimeoutSeconds));
         }
 
         _thread = null;

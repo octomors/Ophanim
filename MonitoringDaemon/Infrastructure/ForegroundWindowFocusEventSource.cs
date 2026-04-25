@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text;
 using MonitoringDaemon.Abstractions;
 using MonitoringDaemon.Models;
+using Microsoft.Extensions.Options;
 
 namespace MonitoringDaemon.Infrastructure;
 
@@ -14,9 +14,12 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
     private readonly object _syncLock = new();
     private readonly ILogger<ForegroundWindowFocusEventSource> _logger;
     private readonly IEventFilterPolicy _eventFilterPolicy;
+    private readonly MonitoringRuntimeOptions _runtimeOptions;
+    private readonly IWindowNativeApi _windowNativeApi;
+    private readonly IProcessMetadataReader _processMetadataReader;
     private readonly int _currentSessionId = Process.GetCurrentProcess().SessionId;
     private IntPtr _winEventHook = IntPtr.Zero;
-    private NativeMethods.WinEventDelegate? _callback;
+    private WinEventCallback? _callback;
     private Action<EventPayload>? _onEvent;
     private IntPtr _lastFocusedHwnd = IntPtr.Zero;
     private EventPayload? _lastEmittedFocusEvent;
@@ -26,10 +29,16 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
 
     public ForegroundWindowFocusEventSource(
         ILogger<ForegroundWindowFocusEventSource> logger,
-        IEventFilterPolicy eventFilterPolicy)
+        IEventFilterPolicy eventFilterPolicy,
+        IOptions<MonitoringRuntimeOptions> runtimeOptions,
+        IWindowNativeApi windowNativeApi,
+        IProcessMetadataReader processMetadataReader)
     {
         _logger = logger;
         _eventFilterPolicy = eventFilterPolicy;
+        _runtimeOptions = runtimeOptions.Value;
+        _windowNativeApi = windowNativeApi;
+        _processMetadataReader = processMetadataReader;
     }
 
     /// <inheritdoc />
@@ -39,17 +48,17 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
         _hookReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _hookThread = new Thread(() =>
         {
-            _hookThreadId = NativeMethods.GetCurrentThreadId();
+            _hookThreadId = _windowNativeApi.GetCurrentThreadId();
             _callback = OnWinEvent;
 
-            _winEventHook = NativeMethods.SetWinEventHook(
-                NativeMethods.EVENT_SYSTEM_FOREGROUND,
-                NativeMethods.EVENT_SYSTEM_FOREGROUND,
+            _winEventHook = _windowNativeApi.SetWinEventHook(
+                WinApiConstants.EVENT_SYSTEM_FOREGROUND,
+                WinApiConstants.EVENT_SYSTEM_FOREGROUND,
                 IntPtr.Zero,
                 _callback,
                 0,
                 0,
-                NativeMethods.WINEVENT_OUTOFCONTEXT | NativeMethods.WINEVENT_SKIPOWNPROCESS);
+                WinApiConstants.WINEVENT_OUTOFCONTEXT | WinApiConstants.WINEVENT_SKIPOWNPROCESS);
 
             if (_winEventHook == IntPtr.Zero)
             {
@@ -59,15 +68,15 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
 
             _hookReady.TrySetResult(true);
 
-            while (NativeMethods.GetMessage(out var msg, IntPtr.Zero, 0, 0) > 0)
+            while (_windowNativeApi.GetMessage(out var msg, IntPtr.Zero, 0, 0) > 0)
             {
-                NativeMethods.TranslateMessage(ref msg);
-                NativeMethods.DispatchMessage(ref msg);
+                _windowNativeApi.TranslateMessage(ref msg);
+                _windowNativeApi.DispatchMessage(ref msg);
             }
 
             if (_winEventHook != IntPtr.Zero)
             {
-                NativeMethods.UnhookWinEvent(_winEventHook);
+                _windowNativeApi.UnhookWinEvent(_winEventHook);
                 _winEventHook = IntPtr.Zero;
             }
         })
@@ -86,12 +95,12 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
     {
         if (_hookThreadId != 0)
         {
-            NativeMethods.PostThreadMessage(_hookThreadId, NativeMethods.WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+            _windowNativeApi.PostThreadMessage(_hookThreadId, WinApiConstants.WM_QUIT, IntPtr.Zero, IntPtr.Zero);
         }
 
         if (_hookThread is not null && _hookThread.IsAlive)
         {
-            _hookThread.Join(TimeSpan.FromSeconds(2));
+            _hookThread.Join(TimeSpan.FromSeconds(_runtimeOptions.HookStopTimeoutSeconds));
         }
 
         _hookThread = null;
@@ -114,20 +123,15 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
         uint dwEventThread,
         uint dwmsEventTime)
     {
-        if (eventType != NativeMethods.EVENT_SYSTEM_FOREGROUND || hwnd == IntPtr.Zero)
+        if (eventType != WinApiConstants.EVENT_SYSTEM_FOREGROUND || hwnd == IntPtr.Zero)
         {
             return;
         }
 
-        if (NativeMethods.GetWindowThreadProcessId(hwnd, out var pid) == 0 || pid == 0)
+        if (_windowNativeApi.GetWindowThreadProcessId(hwnd, out var pid) == 0 || pid == 0)
         {
             return;
         }
-
-        string exeName = "unknown.exe";
-        string? friendlyName = null;
-        bool windowVisible = false;
-        string? windowTitle = null;
 
         lock (_syncLock)
         {
@@ -139,68 +143,26 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
             _lastFocusedHwnd = hwnd;
         }
 
-        try
+        var snapshot = _processMetadataReader.Read((int)pid, null);
+        var exeName = snapshot.ExeName;
+
+        var isWhitelisted = _eventFilterPolicy.IsWhitelistedProcess(exeName, EventFilterScope.FocusChanged);
+        if (!isWhitelisted)
         {
-            using var process = Process.GetProcessById((int)pid);
-            process.Refresh();
-
-            exeName = EventFormatting.NormalizeProcessName(process.ProcessName);
-            try
+            if (_eventFilterPolicy.IsBlacklistedProcess(exeName, EventFilterScope.FocusChanged))
             {
-                var moduleFileName = process.MainModule?.FileName;
-                if (!string.IsNullOrWhiteSpace(moduleFileName))
-                {
-                    exeName = EventFormatting.NormalizeProcessName(Path.GetFileName(moduleFileName));
-                }
-
-                var description = process.MainModule?.FileVersionInfo?.FileDescription;
-                if (!string.IsNullOrWhiteSpace(description))
-                {
-                    friendlyName = description;
-                }
-            }
-            catch
-            {
-                // Access to MainModule can be denied for some processes.
+                return;
             }
 
-            var isWhitelisted = _eventFilterPolicy.IsWhitelistedProcess(exeName, EventFilterScope.FocusChanged);
-            if (!isWhitelisted)
+            if (snapshot.SessionId.HasValue && snapshot.SessionId.Value != _currentSessionId)
             {
-                if (_eventFilterPolicy.IsBlacklistedProcess(exeName, EventFilterScope.FocusChanged))
-                {
-                    return;
-                }
-
-                if (process.SessionId != _currentSessionId)
-                {
-                    return;
-                }
-
-                var mainWindowHandle = process.MainWindowHandle;
-                if (mainWindowHandle == IntPtr.Zero)
-                {
-                    return;
-                }
-
-                windowVisible = ProcessNativeMethods.IsWindowVisible(mainWindowHandle);
-                windowTitle = string.IsNullOrWhiteSpace(process.MainWindowTitle) ? null : process.MainWindowTitle;
+                return;
             }
-            else
+
+            if (snapshot.MainWindowHandle == IntPtr.Zero)
             {
-                var mainWindowHandle = process.MainWindowHandle;
-                if (mainWindowHandle != IntPtr.Zero)
-                {
-                    windowVisible = ProcessNativeMethods.IsWindowVisible(mainWindowHandle);
-                }
-
-                windowTitle = string.IsNullOrWhiteSpace(process.MainWindowTitle) ? null : process.MainWindowTitle;
+                return;
             }
-        }
-        catch
-        {
-            // Process can disappear between event and metadata read.
-            return;
         }
 
         var className = GetWindowClassName(hwnd);
@@ -210,9 +172,9 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
             event_type = "focus_changed",
             pid = (int)pid,
             exe_name = exeName,
-            friendly_name = friendlyName,
-            window_visible = windowVisible,
-            window_title = windowTitle,
+            friendly_name = snapshot.FriendlyName,
+            window_visible = snapshot.WindowVisible,
+            window_title = snapshot.WindowTitle,
             class_name = className,
             time = EventFormatting.ToIsoLocalSeconds(DateTimeOffset.Now)
         };
@@ -230,10 +192,10 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
         _onEvent?.Invoke(payload);
     }
 
-    private static string? GetWindowClassName(IntPtr hwnd)
+    private string? GetWindowClassName(IntPtr hwnd)
     {
         var sb = new StringBuilder(256);
-        var copied = NativeMethods.GetClassName(hwnd, sb, sb.Capacity);
+        var copied = _windowNativeApi.GetClassName(hwnd, sb, sb.Capacity);
         return copied > 0 ? sb.ToString() : null;
     }
 
@@ -254,78 +216,10 @@ internal sealed class ForegroundWindowFocusEventSource : IMonitorEventSource
     }
 }
 
-internal static class NativeMethods
+internal static class WinApiConstants
 {
     internal const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
     internal const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     internal const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
     internal const uint WM_QUIT = 0x0012;
-
-    internal delegate void WinEventDelegate(
-        IntPtr hWinEventHook,
-        uint eventType,
-        IntPtr hwnd,
-        int idObject,
-        int idChild,
-        uint dwEventThread,
-        uint dwmsEventTime);
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct MSG
-    {
-        public IntPtr hwnd;
-        public uint message;
-        public UIntPtr wParam;
-        public IntPtr lParam;
-        public uint time;
-        public POINT pt;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct POINT
-    {
-        public int X;
-        public int Y;
-    }
-
-    [DllImport("user32.dll")]
-    internal static extern IntPtr SetWinEventHook(
-        uint eventMin,
-        uint eventMax,
-        IntPtr hmodWinEventProc,
-        WinEventDelegate lpfnWinEventProc,
-        uint idProcess,
-        uint idThread,
-        uint dwFlags);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool UnhookWinEvent(IntPtr hWinEventHook);
-
-    [DllImport("user32.dll")]
-    internal static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-
-    [DllImport("kernel32.dll")]
-    internal static extern uint GetCurrentThreadId();
-
-    [DllImport("user32.dll")]
-    internal static extern sbyte GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
-
-    [DllImport("user32.dll")]
-    internal static extern bool TranslateMessage([In] ref MSG lpMsg);
-
-    [DllImport("user32.dll")]
-    internal static extern IntPtr DispatchMessage([In] ref MSG lpmsg);
-
-    [DllImport("user32.dll")]
-    internal static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    internal static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-
-    [DllImport("user32.dll")]
-    internal static extern int GetWindowTextLength(IntPtr hWnd);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    internal static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 }

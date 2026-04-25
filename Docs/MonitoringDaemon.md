@@ -136,11 +136,13 @@ Notes:
 
 ## Reliability
 
-- Immediate write: each event is appended right after capture.
-- Periodic durability: flush-to-disk every 30 seconds.
+- Immediate ingestion: each event is enqueued right after capture.
+- Single-writer persistence: one dedicated writer task appends NDJSON lines to reduce lock contention.
+- Periodic durability: flush-to-disk every `Monitoring:FlushIntervalSeconds`.
 - Graceful shutdown flush:
 	- ProcessExit
 	- WM_ENDSESSION
+- Flush loop resilience: periodic flush exceptions are logged and loop continues.
 
 Implementation detail:
 
@@ -155,7 +157,11 @@ Startup sequence:
 2. Open daily NDJSON file in append mode (write-through).
 3. Start WMI start/stop watchers.
 4. Start WinEvent foreground hook.
-5. Start 30-second flush loop.
+5. Start periodic flush loop using configured interval.
+
+Startup fail-fast policy:
+
+- If any event source fails to start and `Monitoring:FailFastOnSourceStartFailure=true`, daemon requests host stop.
 
 Shutdown sequence:
 
@@ -163,6 +169,47 @@ Shutdown sequence:
 2. Write `logout` event once (including session-end/PC shutdown path).
 3. Force flush pending data to disk.
 4. Dispose writer/stream safely.
+
+Shutdown timeout knobs:
+
+- `Monitoring:HookStopTimeoutSeconds` for foreground hook thread join.
+- `Monitoring:SessionMonitorStopTimeoutSeconds` for WM_ENDSESSION thread join.
+
+## Runtime Configuration
+
+`appsettings*.json` section:
+
+```json
+"Monitoring": {
+	"FlushIntervalSeconds": 30,
+	"HookStopTimeoutSeconds": 2,
+	"SessionMonitorStopTimeoutSeconds": 2,
+	"FailFastOnSourceStartFailure": true,
+	"ProcessMetadataCacheTtlSeconds": 15,
+	"ProcessMetadataCacheCapacity": 1024,
+	"EnableSingleWriterQueue": true,
+	"WriteQueueCapacity": 4096,
+	"QueueDrainTimeoutMilliseconds": 2000
+}
+```
+
+Performance-oriented settings:
+
+- `ProcessMetadataCacheTtlSeconds`: cache lifetime for static process metadata (exe/friendly name).
+- `ProcessMetadataCacheCapacity`: upper bound for in-memory metadata cache entries.
+- `EnableSingleWriterQueue`: enables queue-based single-writer append path.
+- `WriteQueueCapacity`: bounded queue capacity for pending serialized events.
+- `QueueDrainTimeoutMilliseconds`: max wait for queue drain before durable flush.
+
+## Performance Smoke
+
+Use `Scripts/perf-smoke.ps1` to collect CPU/RAM metrics and NDJSON line growth for a running daemon process.
+
+Example:
+
+```powershell
+.\Scripts\perf-smoke.ps1 -ProcessName MonitoringDaemon -DurationSeconds 120 -IntervalMs 1000
+```
 
 ## Boundaries
 
