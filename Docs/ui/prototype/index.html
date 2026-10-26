@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ophanim: client prototype</title>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f5f7;--pn:#fff;--ink:#1b1f27;--mut:#6b7280;--ln:#dfe2e8;--ac:#2f6fed;--gap:#e7e9ee;box-sizing:border-box;height:100%;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14161b;--pn:#1c1f26;--ink:#e8eaf0;--mut:#8b93a3;--ln:#2c303a;--ac:#6c9bff;--gap:#262a33}}
+:root[data-theme=dark]{--bg:#14161b;--pn:#1c1f26;--ink:#e8eaf0;--mut:#8b93a3;--ln:#2c303a;--ac:#6c9bff;--gap:#262a33}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;height:100%;overflow:hidden;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font:14px/1.4 Onest,system-ui,sans-serif}
+header{display:flex;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--ln);background:var(--pn)}
+header .sp{flex:1}
+button,select,input{font:inherit;color:var(--ink);background:var(--pn);border:1px solid var(--ln);border-radius:6px;padding:4px 9px}
+button{cursor:pointer}button:hover{border-color:var(--ac)}:focus-visible{outline:2px solid var(--ac)}
+.wrap{flex:1;min-height:0;display:grid;grid-template-columns:260px 1fr;grid-template-rows:minmax(0,1fr)}
+#sort{flex:1;min-width:0}#rsel{align-items:center}#rsel select{flex:none}#rsel span{font-size:12px}
+.selbtns button{flex:1}.wrap.appv .selbtns{display:none}
+.row.dro{box-shadow:inset 0 0 0 1.5px var(--ac);background:var(--bg)}.chev{cursor:pointer;width:16px;text-align:center;color:var(--mut);flex:none}.fi{flex:none}.row.folder .n{cursor:pointer;font-weight:500}.ren{flex:1;min-width:0;padding:1px 4px}.row input:disabled{opacity:.45}
+.selbtns button{display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;padding:4px 6px}
+#total{color:var(--mut);font-size:12px;padding-top:6px;border-top:1px solid var(--ln)}
+.row{border-radius:6px}.row.sel{box-shadow:inset 0 0 0 1.5px var(--ac)}
+.app3{display:grid;grid-template-columns:300px max-content minmax(420px,1fr);gap:10px;flex:1;min-height:0}
+.c1{display:flex;flex-direction:column;gap:10px;align-items:flex-start;min-height:0}.c1 .r2{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
+.c2{display:flex;flex-direction:column;gap:10px;min-height:0}.c3{overflow:auto}
+.wrap.noside{grid-template-columns:1fr}.wrap.noside aside{display:none}
+aside{border-right:1px solid var(--ln);background:var(--pn);padding:10px;display:flex;flex-direction:column;gap:8px;min-height:0}
+aside .ctl{display:flex;gap:6px}aside input[type=search]{flex:none;width:100%}
+#list{overflow:auto;flex:1;min-height:0}
+.row{display:flex;align-items:center;gap:8px;padding:4px}.row:hover{background:var(--bg)}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;display:inline-block}
+.row .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.v,.mut{color:var(--mut)}.v{font-size:12px}
+main{padding:12px 14px;min-width:0;min-height:0;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.bar h2{margin:0;font-size:18px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.t{background:var(--pn);border:1px solid var(--ln);border-radius:8px;padding:8px 12px}
+.t small{color:var(--mut);display:block}.t b{font-size:18px;font-weight:600}
+.t[data-d]{cursor:pointer}.t[data-d]:hover{border-color:var(--ac)}
+.card{background:var(--pn);border:1px solid var(--ln);border-radius:8px;padding:12px;min-height:0;position:relative}
+#ch,#dc{flex:1;overflow:hidden}
+.mid{display:flex;gap:10px;flex:1;min-height:0}
+.ok{color:#2a9d5b}
+svg text{fill:var(--mut);font:10px Onest,system-ui,sans-serif}svg [data-d],svg [data-a]{cursor:pointer}
+.legend{display:grid;gap:4px;overflow:auto}.legend div{display:flex;gap:8px;align-items:center;cursor:pointer}
+.flex{display:flex;gap:20px;align-items:center}
+.empty{max-width:520px;margin:8vh auto;text-align:center;border:2px dashed var(--ln);border-radius:12px;padding:32px}
+.empty button{margin:4px}
+.tl{display:flex;overflow-y:auto;height:100%}.tl .lb{width:140px;flex:none}.tl .lb div{height:26px;line-height:26px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tl .sc{overflow-x:auto;overflow-y:hidden;flex:1}
+#tp{position:fixed;display:none;pointer-events:none;background:var(--ink);color:var(--bg);padding:5px 8px;border-radius:6px;font-size:12px;z-index:9;max-width:320px}
+</style></head><body>
+<header><b>Ophanim</b><span class="sp"></span>
+<button data-act="folder">Log folder</button><button data-act="files">Files</button><button data-act="demo">Demo</button>
+<input id="fd" type="file" webkitdirectory hidden><input id="ff" type="file" multiple hidden></header>
+<div class="wrap"><aside>
+<div class="ctl" id="rsel"></div>
+<input id="q" type="search" placeholder="Search apps">
+<div class="ctl"><select id="sort"><option value="sec">By time</option><option value="first">By first seen</option><option value="md">Max per day</option><option value="avg">Average per day</option><option value="l">By launches</option><option value="name">By name</option></select><button data-act="dir" title="Direction">↓</button></div>
+<div class="ctl selbtns"><button data-act="selapps" title="Check or uncheck all apps with an active checkbox">Select All Apps</button><button data-act="selfold" title="Turn all folders on or off">Select All <svg width="14" height="12" viewBox="0 0 14 12"><path d="M0 1.5A1.5 1.5 0 0 1 1.5 0H5l1.5 2H12.5A1.5 1.5 0 0 1 14 3.5v7A1.5 1.5 0 0 1 12.5 12h-11A1.5 1.5 0 0 1 0 10.5z" fill="currentColor"/></svg></button></div>
+<div id="list"></div><div id="total"></div></aside><main id="main"></main></div>
+<div id="tp"></div>
+<script>
+const $=s=>document.querySelector(s),D=86400,esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const S={segs:[],apps:new Map(),ses:[],launch:[],bad:0,last:'',range:30,view:'heat',sort:'sec',dir:-1,q:'',scr:'main',day:null,app:null,zero:false,zoom:1};
+S.folders=[];S.fid=1;S.ren=null;S.drag=null;
+try{const j=JSON.parse(localStorage.getItem('ophanim.folders')||'null');if(j){S.folders=j.f||[];S.fid=j.n||1}}catch{}
+const saveF=()=>{try{localStorage.setItem('ophanim.folders',JSON.stringify({f:S.folders,n:S.fid}))}catch{}};
+const fk=f=>'f:'+f.id,fol=e=>S.folders.find(f=>f.items.includes(e)),ent=e=>{const f=fol(e);return f&&f.on?fk(f):e};
+const fc=id=>`hsl(${Math.round(id*137.508)%360} 65% 50%)`;
+function syncF(){for(const k of[...S.apps.keys()])if(k.startsWith('f:'))S.apps.delete(k);for(const f of S.folders){f.color=fc(f.id);const fs=f.items.map(x=>S.apps.get(x)).filter(Boolean);S.apps.set(fk(f),{exe:fk(f),name:f.name,color:f.color,show:true,folder:true,first:fs.length?Math.min(...fs.map(x=>x.first)):0})}}
+function chgF(){S.folders=S.folders.filter(f=>f.items.length);syncF();saveF();rMain()}
+const tip=s=>`data-tip="${esc(s)}"`,P2=n=>String(n).padStart(2,'0');
+const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],WD=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const pt=t=>{const m=/(\d+)-(\d+)-(\d+)T(\d+):(\d+):(\d+)/.exec(t||'');return m?Date.UTC(+m[1],m[2]-1,+m[3],+m[4],+m[5],+m[6])/1e3:NaN};
+const dk=L=>new Date(L*1e3).toISOString().slice(0,10),add=(k,n)=>dk(Date.parse(k)/1e3+n*D);
+const fd=k=>k.slice(8,10)+'.'+k.slice(5,7)+'.'+k.slice(2,4),fdm=k=>k.slice(8,10)+'.'+k.slice(5,7),dow=k=>new Date(k+'T00:00:00Z').getUTCDay();
+const fmt=s=>{s=Math.round(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?h+'h '+P2(m)+'m':m?m+'m':s+'s'};
+const col=n=>{let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))>>>0;return`hsl(${h%360} 58% 52%)`};
+function load(texts){const ev=[];let bad=0;for(const t of texts)for(const l of t.split('\n')){if(!l.trim())continue;try{const o=JSON.parse(l);o.L=pt(o.time);if(isNaN(o.L))throw 0;ev.push(o)}catch{bad++}}
+ev.sort((a,b)=>a.L-b.L);const segs=[],apps=new Map(),ses=[],launch=[];let cur=null,last=0,so=null;
+const close=e=>{if(!cur)return;for(let t=cur.s0;t<e;){const d=Math.floor(t/D)*D,en=Math.min(e,d+D);segs.push({day:dk(t),s:t-d,e:en-d,exe:cur.exe,title:cur.title});t=en}cur=null};
+for(const o of ev){const x=(o.exe_name||'').toLowerCase();
+if(x){let a=apps.get(x);if(!a)apps.set(x,a={exe:x,name:o.friendly_name||x,color:col(x),show:true,first:o.L});else if(o.friendly_name)a.name=o.friendly_name}
+if(o.event_type=='focus_changed'&&x){close(o.L);cur={exe:x,title:o.window_title||'',s0:o.L}}
+else if(o.event_type=='logout'){close(o.L);if(so!=null){ses.push([so,o.L]);so=null}}
+else if(o.event_type=='logon'){close(last);if(so!=null)ses.push([so,last]);so=o.L}
+else if(o.event_type=='process_start'&&x)launch.push([dk(o.L),x]);
+last=o.L}
+close(last);if(so!=null)ses.push([so,last]);
+const old=S.apps;apps.forEach((a,k)=>{if(old.has(k))a.show=old.get(k).show});
+Object.assign(S,{segs,apps,ses,launch,bad,last:ev.length?ev[ev.length-1].time:'',scr:'main'});syncF();
+S.end=segs.length?segs[segs.length-1].day:null;S.min=segs.length?segs[0].day:null;render()}
+function rangeSel(){return`<select data-k="range" aria-label="Time span">${[[7,'Last 7 days'],[30,'Last 30 days'],[90,'Last 90 days'],[180,'Last 180 days'],[365,'Last 365 days'],[0,'All time']].map(([v,l])=>`<option value="${v}" ${S.range==v?'selected':''}>${l}</option>`).join('')}</select>`}
+function rng(){const e=S.end,s=S.range?add(e,-(S.range-1)):S.min,l=[];for(let d=s;d<=e;d=add(d,1))l.push(d);return{s,e,l}}
+function stats(){const R=S.scr=='day'?{s:S.day,e:S.day}:rng(),a=new Map(),g=k=>{let x=a.get(k);if(!x)a.set(k,x={sec:0,days:new Map(),max:0,l:0});return x};
+for(const s of S.segs){if(s.day<R.s||s.day>R.e)continue;const x=g(s.exe),d=s.e-s.s;x.sec+=d;x.days.set(s.day,(x.days.get(s.day)||0)+d);x.max=Math.max(x.max,d)}
+for(const[d,e]of S.launch)if(d>=R.s&&d<=R.e&&a.has(e))a.get(e).l++;
+for(const f of S.folders){const xs=f.items.map(i=>a.get(i)).filter(Boolean);if(!xs.length)continue;const x={sec:0,days:new Map(),max:0,l:0};for(const y of xs){x.sec+=y.sec;x.l+=y.l;x.max=Math.max(x.max,y.max);y.days.forEach((v,d)=>x.days.set(d,(x.days.get(d)||0)+v))}a.set(fk(f),x)}
+for(const[k,x]of a){const ap=S.apps.get(k);x.first=ap.first;x.md=Math.max(...x.days.values());x.avg=x.sec/x.days.size;x.name=ap.name.toLowerCase()}return a}
+const shown=e=>S.apps.get(e).show;
+const mtc=k=>{const q=S.q.toLowerCase();return !q||S.apps.get(k).name.toLowerCase().includes(q)||k.includes(q)};
+const FI=c=>`<svg class="fi" width="14" height="12" viewBox="0 0 14 12"><path d="M0 1.5A1.5 1.5 0 0 1 1.5 0H5l1.5 2H12.5A1.5 1.5 0 0 1 14 3.5v7A1.5 1.5 0 0 1 12.5 12h-11A1.5 1.5 0 0 1 0 10.5z" fill="${c}"/></svg>`;
+function rList(){const L=$('#list'),top=L.scrollTop;
+if(!S.segs.length){$('#rsel').innerHTML='';L.innerHTML='';$('#total').textContent='';return}
+$('#rsel').innerHTML=S.scr=='day'?`<button data-act="prev">◀</button><b style="flex:1;text-align:center">${fd(S.day)}, ${WD[dow(S.day)]}</b><button data-act="next">▶</button>`:rangeSel()+`<span class="mut">${fd(rng().s)} – ${fd(S.end)}</span>`;
+const st=stats(),q=S.q.toLowerCase(),ap=S.scr=='app';
+const cmp=(a,b)=>S.sort=='name'?S.dir*a[1].name.localeCompare(b[1].name):S.dir*(a[1][S.sort]-b[1][S.sort]);
+const v=x=>({sec:fmt(x.sec),first:fd(dk(x.first)),md:fmt(x.md),avg:fmt(x.avg),l:x.l+' runs',name:fmt(x.sec)}[S.sort]);
+const items=[],inF=new Set();
+for(const f of S.folders){f.items.forEach(i=>inF.add(i));if(!st.has(fk(f)))continue;const fn=f.name.toLowerCase().includes(q),mem=f.items.filter(i=>st.has(i)&&(!q||fn||mtc(i)));if(q&&!fn&&!mem.length)continue;mem.sort((a,b)=>cmp([a,st.get(a)],[b,st.get(b)]));items.push([fk(f),st.get(fk(f)),f,mem])}
+for(const[k,x]of st){if(k.startsWith('f:')||inF.has(k)||!mtc(k))continue;items.push([k,x,null,[]])}
+items.sort(cmp);
+const arow=(k,x,f)=>{const a=S.apps.get(k),dim=f&&f.on;return`<div class="row${ap&&k==S.app?' sel':''}" draggable="true" data-ap="${esc(k)}" ${f?'style="padding-left:26px"':''}>${ap?'':`<input type="checkbox" ${dim?'checked disabled':`data-chk="${esc(k)}" ${a.show?'checked':''}`} title="Include in stats">`}<span class="dot" style="background:${a.color}"></span><span class="n" data-a="${esc(k)}" title="${esc(k)}">${esc(a.name)}</span><span class="v">${v(x)}</span></div>`};
+const frow=(f,x)=>`<div class="row folder${ap&&S.app==fk(f)?' sel':''}" data-fr="${f.id}">${ap?'':`<input type="checkbox" data-fchk="${f.id}" ${f.on?'checked':''} title="Merge into one entry and include in stats">`}${FI(f.color)}${S.ren==f.id?`<input class="ren" data-ren="${f.id}" value="${esc(f.name)}">`:`<span class="n" data-fn="${f.id}" title="Double-click to rename">${esc(f.name)}</span>`}<span class="v">${v(x)}</span><span class="chev" data-fo="${f.id}">${f.open?'▾':'▸'}</span></div>`;
+L.innerHTML=items.map(([k,x,f,mem])=>f?frow(f,x)+((f.open||q)?mem.map(m=>arow(m,st.get(m),f)).join(''):''):arow(k,x,null)).join('')||'<div class="mut">No apps</div>';
+L.scrollTop=top;const rn=L.querySelector('.ren');if(rn){rn.focus();rn.select()}
+$('#total').textContent='Total: '+[...st.keys()].filter(k=>!k.startsWith('f:')).length+' apps'}
+function rawOf(e,R){const f=e.startsWith('f:')&&S.folders.find(x=>fk(x)==e),it=f?f.items:[e];return S.segs.filter(s=>s.day>=R.s&&s.day<=R.e&&it.includes(s.exe))}
+function segsOf(e,R){const r=rawOf(e,R);if(!e.startsWith('f:'))return r;const o=[];for(const s of r){const p=o[o.length-1];if(p&&p.day==s.day&&p.e==s.s)p.e=s.e;else o.push({day:s.day,s:s.s,e:s.e,exe:e,title:s.title})}return o}
+const hm=s=>P2(Math.floor(s/3600))+':'+P2(Math.floor(s%3600/60));
+function vis(days){const set=new Set(days),o=[];for(const s of S.segs){if(!set.has(s.day))continue;const k=ent(s.exe);if(!S.apps.get(k).show)continue;const p=o[o.length-1];if(k[0]=='f'&&k[1]==':'&&p&&p.exe==k&&p.day==s.day&&p.e==s.s)p.e=s.e;else o.push({day:s.day,s:s.s,e:s.e,exe:k,title:s.title})}return o}
+function clusters(list){const out=[];let c=null;const fl=()=>{if(c)out.push(c);c=null};
+for(const g of list){const sh=g.e-g.s<1800;if(sh&&c&&c.sh&&g.s-c.e<=120&&c.e-c.s<1800){c.items.push(g);c.e=g.e}else{fl();c={s:g.s,e:g.e,items:[g],sh};if(!sh)fl()}}fl();return out}
+const OFFP='<pattern id="off" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--gap)"/><rect width="1.5" height="6" fill="var(--mut)" fill-opacity=".45"/></pattern>';
+let _o,_s;function offs(){if(_s!==S.ses){_s=S.ses;_o=[];for(let i=1;i<S.ses.length;i++)if(S.ses[i][0]>S.ses[i-1][1])_o.push([S.ses[i-1][1],S.ses[i][0]])}return _o}
+function offRects(d,x,w,Y){const d0=Date.parse(d)/1e3;let o='';for(const[a,b]of offs()){const s=Math.max(a,d0)-d0,e=Math.min(b,d0+D)-d0;if(e>s)o+=`<rect data-d="${d}" ${tip('PC off · '+fmt(e-s))} x="${x}" y="${Y(e)}" width="${w}" height="${Y(s)-Y(e)}" fill="url(#off)"/>`}return o}
+function heat(R,W,H){const x0=44,pt=10,pb=20,hh=H-pt-pb,n=R.l.length,cw=(W-x0)/n,Y=s=>pt+hh-s/D*hh,defs=new Map();let o='';
+for(let h=0;h<=24;h++){const y=Y(h*3600);o+=`<line x1="${x0}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--ln)"/><text x="${x0-6}" y="${y+3}" text-anchor="end">${P2(h)}:00</text>`}
+const by=new Map();for(const s of vis(R.l)){if(!by.has(s.day))by.set(s.day,[]);by.get(s.day).push(s)}
+R.l.forEach((d,i)=>{o+=offRects(d,x0+i*cw,Math.max(cw-1,1),Y);for(const c of clusters(by.get(d)||[])){const t=new Map();for(const g of c.items)t.set(g.exe,(t.get(g.exe)||0)+g.e-g.s);
+const ex=[...t].sort((a,b)=>b[1]-a[1]);let fill;
+if(ex.length>1){const k=ex.slice(0,4).map(e=>S.apps.get(e[0]).color).join();if(!defs.has(k))defs.set(k,'p'+defs.size);fill=`url(#${defs.get(k)})`}else fill=S.apps.get(ex[0][0]).color;
+const y1=Y(c.e),h=Math.max(Y(c.s)-y1,ex.length>1?3:1.5);
+const tx=fd(d)+'\n'+ex.map(([e,v])=>S.apps.get(e).name+': '+fmt(v)).join('\n')+(c.items.length==1&&c.items[0].title?'\n'+c.items[0].title:'');
+o+=`<rect data-a="${esc(ex[0][0])}" ${tip(tx)} x="${x0+i*cw}" y="${y1}" width="${Math.max(cw-1,1)}" height="${h}" fill="${fill}"/>`}});
+let df=OFFP;for(const[k,id]of defs){const cs=k.split(',');df+=`<pattern id="${id}" patternUnits="userSpaceOnUse" width="${cs.length*3}" height="${cs.length*3}" patternTransform="rotate(45)">${cs.map((c,i)=>`<rect x="${i*3}" width="3" height="${cs.length*3}" fill="${c}"/>`).join('')}</pattern>`}
+const st=Math.ceil(n/Math.floor((W-x0)/50));o+=R.l.map((d,i)=>i%st?'':`<text data-d="${d}" x="${x0+i*cw}" y="${H-4}">${fdm(d)}</text>`).join('');
+return`<svg width="${W}" height="${H}"><defs>${df}</defs>${o}</svg>`}
+function hist(R,W,H){const mo=R.l.length>120,key=d=>mo?d.slice(0,7):d,g=new Map();
+for(const s of vis(R.l)){const k=key(s.day);let m=g.get(k);if(!m)g.set(k,m=new Map());m.set(s.exe,(m.get(s.exe)||0)+s.e-s.s)}
+const keys=[...new Set(R.l.map(key))],tot=k=>[...(g.get(k)||[]).values()].reduce((a,b)=>a+b,0),top=Math.max(1,Math.ceil(Math.max(0,...keys.map(tot))/3600)),step=Math.ceil(top/Math.floor((H-30)/18)),x0=44,pt=8,pb=20,hh=H-pt-pb,bw=(W-x0)/keys.length,Y=s=>pt+hh-s/(top*3600)*hh;let o='';
+for(let h=0;h<=top;h+=step)o+=`<line x1="${x0}" x2="${W}" y1="${Y(h*3600)}" y2="${Y(h*3600)}" stroke="var(--ln)"/><text x="${x0-6}" y="${Y(h*3600)+3}" text-anchor="end">${h}h</text>`;
+keys.forEach((k,i)=>{const it=[...(g.get(k)||[])].sort((a,b)=>b[1]-a[1]),big=it.filter(x=>x[1]>=top*3600*.03),sm=it.filter(x=>x[1]<top*3600*.03);let y=Y(0);const dd=mo?'':`data-d="${k}"`;
+for(const[e,v]of big){const h=v/(top*3600)*hh;y-=h;o+=`<rect data-a="${esc(e)}" ${tip((mo?k:fd(k))+'\n'+S.apps.get(e).name+': '+fmt(v))} x="${x0+i*bw}" y="${y}" width="${Math.max(bw-1,1)}" height="${h}" fill="${S.apps.get(e).color}"/>`}
+if(sm.length){const v=sm.reduce((a,b)=>a+b[1],0),h=v/(top*3600)*hh;y-=h;o+=`<rect ${dd} ${tip((mo?k:fd(k))+' · Other\n'+sm.map(([e,v])=>S.apps.get(e).name+': '+fmt(v)).join('\n'))} x="${x0+i*bw}" y="${y}" width="${Math.max(bw-1,1)}" height="${h}" fill="#9aa1ad"/>`}});
+const st=Math.ceil(keys.length/Math.floor((W-x0)/(mo?50:50)));o+=keys.map((k,i)=>i%st?'':`<text ${mo?'':`data-d="${k}"`} x="${x0+i*bw}" y="${H-4}">${mo?MO[+k.slice(5)-1]+' '+k.slice(2,4):fdm(k)}</text>`).join('');
+return`<svg width="${W}" height="${H}">${o}</svg>`}
+function donut(R,W,H){const t=new Map();for(const s of vis(R.l))t.set(s.exe,(t.get(s.exe)||0)+s.e-s.s);const tot=[...t.values()].reduce((a,b)=>a+b,0)||1;
+let sl=[],oth=[];[...t].sort((a,b)=>b[1]-a[1]).forEach(([e,v])=>v/tot<.02?oth.push([e,v]):sl.push([e,v]));if(oth.length)sl.push([null,oth.reduce((a,b)=>a+b[1],0)]);
+const r=70,C=2*Math.PI*r;let acc=0,c='',lg='';for(const[e,v]of sl){const a=e&&S.apps.get(e),color=a?a.color:'#9aa1ad',len=v/tot*C,tx=a?a.name+': '+fmt(v):'Other\n'+oth.map(([e,v])=>S.apps.get(e).name+': '+fmt(v)).join('\n');
+c+=`<circle ${e?`data-a="${esc(e)}"`:''} ${tip(tx)} r="${r}" cx="100" cy="100" fill="none" stroke="${color}" stroke-width="30" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-acc}" transform="rotate(-90 100 100)"/>`;acc+=len;
+lg+=`<div ${e?`data-a="${esc(e)}"`:''} ${tip(tx)}><span class="dot" style="background:${color}"></span>${a?esc(a.name):'Other'}<span class="mut">&nbsp;${fmt(v)} · ${(v/tot*100).toFixed(1)}%</span></div>`}
+const z=Math.min(H,W*.55);return`<div class="flex" style="height:100%"><svg viewBox="0 0 200 200" width="${z}" height="${z}">${c}<text x="100" y="104" text-anchor="middle" style="font-size:16px;fill:var(--ink)">${fmt(tot)}</text></svg><div class="legend" style="max-height:${H}px">${lg}</div></div>`}
+function rMain(){const m=$('#main');rList();$('.wrap').classList.toggle('appv',S.scr=='app');
+if(!S.segs.length){m.innerHTML=`<div class="empty"><h2>Connect your logs</h2><p class="mut">Pick the DayLogs folder (%AppData%\\Ophanim\\DayLogs) or .ndjson files. Data is read in the browser and never uploaded.</p><button data-act="folder">Choose folder</button><button data-act="files">Choose files</button><button data-act="demo">Demo data</button><p class="mut">You can also drop files here.${S.bad?' Skipped bad lines: '+S.bad:''}</p></div>`;return}
+if(S.scr=='app'&&!S.apps.get(S.app))S.scr='main';
+if(S.scr=='day')return rDay(m);if(S.scr=='app')return rApp(m);
+const R=rng(),V=vis(R.l),tot=V.reduce((a,s)=>a+s.e-s.s,0),pd=new Map();V.forEach(s=>pd.set(s.day,(pd.get(s.day)||0)+s.e-s.s));
+const best=[...pd].sort((a,b)=>b[1]-a[1])[0],hid=[...S.apps.values()].filter(a=>!a.show&&!(fol(a.exe)&&fol(a.exe).on)).length;
+S.eff=S.view=='heat'&&R.l.length>60?'hist':S.view;
+m.innerHTML=`<div class="tiles"><div class="t"><small>View</small><select data-k="view" aria-label="View"><option value="heat" ${S.eff=='heat'?'selected':''} ${R.l.length>60?'disabled':''}>Heatmap</option><option value="hist" ${S.eff=='hist'?'selected':''}>Histogram</option><option value="ring" ${S.eff=='ring'?'selected':''}>Donut chart</option></select></div>
+<div class="t" ${tip('Total time of the selected apps'+(hid?' ('+hid+' hidden)':''))}><small>Screen time</small><b>${fmt(tot)}</b></div><div class="t"><small>Active days</small><b>${pd.size}</b></div>
+<div class="t" ${best?`data-d="${best[0]}"`:''}><small>Most active day</small><b>${best?fmt(best[1]):'—'}</b> ${best?fd(best[0]):''}</div><div class="t"><small>Focus switches</small><b>${V.length}</b></div>
+<div class="t"><small>Daemon</small><b class="ok">●</b> last event ${fd(S.last.slice(0,10))} ${S.last.slice(11,16)}</div></div>
+<div class="card" id="ch"></div>`;fill()}
+function fill(){const c=$('#ch');if(!c)return;const R=rng(),W=c.clientWidth-24,H=c.clientHeight-24;c.innerHTML=S.eff=='heat'?heat(R,W,H):S.eff=='hist'?hist(R,W,H):donut(R,W,H)}
+function rDay(m){const d=S.day,V=vis([d]),t=new Map();V.forEach(s=>t.set(s.exe,(t.get(s.exe)||0)+s.e-s.s));
+const d0=Date.parse(d)/1e3,ses=S.ses.reduce((a,[s,e])=>a+Math.max(0,Math.min(e,d0+D)-Math.max(s,d0)),0),
+tot=[...t.values()].reduce((a,b)=>a+b,0),mx=Math.max(0,...V.map(s=>s.e-s.s)),ln=S.launch.filter(l=>l[0]==d).length;
+const mxs=V.reduce((a,s)=>s.e-s.s>(a?a.e-a.s:0)?s:a,null);
+const sl=S.ses.map(([a,b])=>[Math.max(a,d0),Math.min(b,d0+D)]).filter(x=>x[1]>x[0]).map(([a,b])=>hm(a-d0)+'–'+hm(b-d0));
+const rows=[...t].sort((a,b)=>b[1]-a[1]),W=Math.max(400,innerWidth-260-28-140-24)*S.zoom,rh=rows.length*26;
+let o=[...Array(25).keys()].map(h=>`<line x1="${h/24*W}" x2="${h/24*W}" y1="0" y2="${rh}" stroke="var(--ln)"/><text x="${Math.min(h/24*W+2,W-18)}" y="${rh+14}">${P2(h)}:00</text>`).join('');
+offs().forEach(([a,b])=>{const s=Math.max(a,d0)-d0,e=Math.min(b,d0+D)-d0;if(e>s)o=`<rect ${tip('PC off · '+fmt(e-s))} x="${s/D*W}" y="0" width="${(e-s)/D*W}" height="${rh}" fill="url(#off)"/>`+o});
+rows.forEach(([e],i)=>{const a=S.apps.get(e);for(const s of V.filter(s=>s.exe==e))o+=`<rect data-a="${esc(e)}" ${tip(a.name+(s.title?'\n'+s.title:'')+'\n'+fmt(s.e-s.s))} x="${s.s/D*W}" y="${i*26+3}" width="${Math.max((s.e-s.s)/D*W,1)}" height="20" rx="2" fill="${a.color}"/>`});
+m.innerHTML=`<div class="bar"><button data-act="back">← Back</button></div>
+<div class="tiles"><div class="t" ${tip('PC on:\n'+(sl.join('\n')||'no sessions'))}><small>Session time</small><b>${fmt(ses)}</b></div><div class="t" ${tip('Total time of the selected apps')}><small>Screen time</small><b>${fmt(tot)}</b></div><div class="t"><small>Focus switches</small><b>${V.length}</b></div><div class="t"><small>Longest focus</small><b>${fmt(mx)}</b><br>${mxs?esc(S.apps.get(mxs.exe).name):''}</div><div class="t"><small>Apps launched</small><b>${ln}</b></div></div>
+<div class="card" id="dc">${rows.length?`<div class="tl"><div class="lb">${rows.map(([e])=>`<div data-a="${esc(e)}" style="cursor:pointer"><span class="dot" style="background:${S.apps.get(e).color}"></span> ${esc(S.apps.get(e).name)}</div>`).join('')}</div><div class="sc" id="sc"><svg width="${W}" height="${rh+20}"><defs>${OFFP}</defs>${o}</svg></div></div>`:'<p class="mut">No data for this day.</p>'}</div>`;
+const sc=$('#sc');if(sc)sc.addEventListener('wheel',e=>{e.preventDefault();if(e.ctrlKey){S.zoom=Math.min(12,Math.max(1,S.zoom*(e.deltaY<0?1.25:.8)));rDay($('#main'))}else sc.scrollLeft+=e.deltaY+e.deltaX},{passive:false})}
+function rApp(m){const e=S.app,a=S.apps.get(e),R=rng(),V=segsOf(e,R),pd=new Map(),hr=Array(24).fill(0),wk=Array(7).fill(0),ti=new Map();
+let tot=0,mx=0,mxd='';for(const s of V){const d=s.e-s.s;tot+=d;if(d>mx){mx=d;mxd=s.day}pd.set(s.day,(pd.get(s.day)||0)+d);wk[dow(s.day)]+=d;for(let h=Math.floor(s.s/3600);h*3600<s.e;h++)hr[h]+=Math.min(s.e,h*3600+3600)-Math.max(s.s,h*3600);
+const k=(s.title||'(no title)').replace(/\s[-–—]\s[^-–—]*$/,'');ti.set(k,(ti.get(k)||0)+d)}
+ti.clear();for(const s of rawOf(e,R)){const k=(s.title||'(no title)').replace(/\s[-–—]\s[^-–—]*$/,'');ti.set(k,(ti.get(k)||0)+s.e-s.s)}
+const best=[...pd].sort((x,y)=>y[1]-x[1])[0],den=S.zero?R.l.length:pd.size||1,hm=Math.max(1,...hr),dm=Math.max(1,...pd.values());
+const cnt=Array(7).fill(0);(S.zero?R.l:[...pd.keys()]).forEach(d=>cnt[dow(d)]++);const av=wk.map((v,i)=>cnt[i]?v/cnt[i]:0),am=Math.max(1,...av);
+const Pp=(r,t)=>`${135+r*Math.cos(t)} ${135+r*Math.sin(t)}`,an=h=>h/24*2*Math.PI-Math.PI/2;
+let ring=hr.map((v,h)=>`<path ${tip(P2(h)+':00–'+P2(h+1)+':00\n'+fmt(v)+' total')} d="M${Pp(62,an(h))} L${Pp(94,an(h))} A94 94 0 0 1 ${Pp(94,an(h+1))} L${Pp(62,an(h+1))} A62 62 0 0 0 ${Pp(62,an(h))}Z" fill="${a.color}" fill-opacity="${.08+.92*v/hm}"/>`).join('');
+for(let h=0;h<24;h+=3){const t=an(h),[x,y]=Pp(110,t).split(' ');ring+=`<text x="${x}" y="${+y+3}" text-anchor="middle">${h==0?'00:00 / 24:00':P2(h)+':00'}</text>`}
+const last=R.l.slice(-371),pad=dow(last[0]),X=30,wks=Math.ceil((last.length+pad)/7),avail=Math.max(400,$('#main').clientHeight-24);
+let d0=(avail-254+210/wks)/(1+7/wks);if((d0-X)/wks>13)d0=avail-345;const dia=Math.max(160,Math.min(420,Math.floor(d0))),cs=Math.max(3,Math.min(13,(dia-X)/wks));
+let cal='',mon='',pm=-1;last.forEach((d,i)=>{const j=i+pad,cx=X+Math.floor(j/7)*cs,mm=+d.slice(5,7);if(mm!=pm&&(j%7<3||i==0)){mon+=`<text x="${cx}" y="9">${MO[mm-1]}</text>`;pm=mm}
+cal+=`<rect data-d="${d}" ${tip(fd(d)+': '+fmt(pd.get(d)||0))} x="${cx}" y="${14+j%7*cs}" width="${Math.max(cs-1.2,2)}" height="${Math.max(cs-1.2,2)}" rx="1" fill="${pd.has(d)?a.color:'var(--gap)'}" fill-opacity="${pd.has(d)?.2+.8*pd.get(d)/dm:1}"/>`});
+const rl=[1,3,5].map(i=>`<text x="0" y="${14+i*cs+Math.min(cs,10)}">${WD[i]}</text>`).join('');
+m.innerHTML=`<div class="app3"><div class="c1"><button data-act="back">← Back</button><h2 style="margin:0;font-size:36px;line-height:1.1;overflow-wrap:anywhere">${esc(a.name)}</h2><div class="mut" style="font-size:28px;line-height:1.1;overflow-wrap:anywhere">${a.folder?'Folder · '+S.folders.find(x=>fk(x)==e).items.length+' apps':esc(e)}</div>
+<div class="r2"><div class="t"><small>Total</small><b>${fmt(tot)}</b></div><div class="t" ${best?`data-d="${best[0]}"`:''}><small>Max per day</small><b>${best?fmt(best[1]):'—'}</b><br>${best?fd(best[0]):''}</div></div>
+<div class="r2"><div class="t" ${tip('Averaged over '+den+' days ('+pd.size+' active of '+R.l.length+' in range)')}><small>Average per day</small><b>${fmt(tot/den)}</b><br><label><input type="checkbox" data-zero ${S.zero?'checked':''}> count unused days</label></div>
+<div class="t" ${mxd?`data-d="${mxd}"`:''}><small>Avg / max focus</small><b>${fmt(V.length?tot/V.length:0)} / ${fmt(mx)}</b><br>${mxd?fd(mxd):''}</div></div></div>
+<div class="c2" style="width:${dia+24}px"><div class="card" style="flex:none;height:${dia+40}px"><small class="mut">Hours of day</small><svg viewBox="0 0 270 270" style="position:absolute;left:12px;top:28px;width:${dia}px;height:${dia}px">${ring}</svg></div>
+<div class="card" style="flex:none;overflow:hidden"><small class="mut">Calendar</small><br><svg width="${dia}" height="${14+7*cs}">${mon}${rl}${cal}</svg></div>
+<div class="card" style="flex:1;display:flex;flex-direction:column"><small class="mut">By weekday</small><div style="flex:1;min-height:0;display:flex;gap:8px">${[1,2,3,4,5,6,0].map(i=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:0" ${tip(WD[i]+': avg '+fmt(av[i])+(S.zero?' over ':' on ')+cnt[i]+' days')}><div style="flex:1;width:100%;display:flex;align-items:flex-end"><div style="width:100%;height:${av[i]/am*100}%;background:${a.color};border-radius:3px 3px 0 0"></div></div><span class="mut">${WD[i]}</span></div>`).join('')}</div></div></div>
+<div class="card c3"><small class="mut">Window titles</small>${[...ti].sort((x,y)=>y[1]-x[1]).slice(0,30).map(([k,v])=>`<div class="row"><span class="n" style="cursor:default">${esc(k)}</span><span class="v">${fmt(v)} · ${(v/tot*100).toFixed(0)}%</span></div>`).join('')}</div></div>`}
+function render(){rMain()}
+document.addEventListener('click',e=>{const t=e.target,ac=t.closest('[data-act]');
+if(ac){const a=ac.dataset.act;if(a=='folder')$('#fd').click();else if(a=='files')$('#ff').click();else if(a=='demo')load([demo()]);else if(a=='dir'){S.dir*=-1;ac.textContent=S.dir<0?'↓':'↑';rList()}
+else if(a=='selapps'){const ks=[...stats().keys()].filter(k=>!k.startsWith('f:')&&mtc(k)&&!(fol(k)&&fol(k).on)),all=ks.every(k=>S.apps.get(k).show);ks.forEach(k=>S.apps.get(k).show=!all);rMain()}
+else if(a=='selfold'){const st=stats(),fs=S.folders.filter(f=>st.has(fk(f))&&(!S.q||f.name.toLowerCase().includes(S.q.toLowerCase())||f.items.some(i=>st.has(i)&&mtc(i)))),all=fs.every(f=>f.on);fs.forEach(f=>f.on=!all);chgF()}
+else if(a=='back'){S.scr='main';rMain()}else if(a=='prev'||a=='next'){const n=add(S.day,a=='next'?1:-1);if(n>=S.min&&n<=S.end){S.day=n;rMain()}}return}
+const fo=t.closest('[data-fo]');if(fo){const f=S.folders.find(x=>x.id==fo.dataset.fo);f.open=!f.open;saveF();rList();return}
+const fn=t.closest('[data-fn]');if(fn){const id=fn.dataset.fn;clearTimeout(S.ct);S.ct=setTimeout(()=>{S.app='f:'+id;S.scr='app';rMain()},250);return}
+const ap=t.closest('[data-a]');if(ap&&S.segs.length){S.app=ap.dataset.a;S.scr='app';rMain();return}
+const dy=t.closest('[data-d]');if(dy){S.day=dy.dataset.d;S.scr='day';rMain()}});
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset.k){S[t.dataset.k]=t.dataset.k=='range'?+t.value:t.value;render()}
+else if(t.dataset.fchk){S.folders.find(f=>f.id==t.dataset.fchk).on=t.checked;chgF()}
+else if(t.dataset.chk){S.apps.get(t.dataset.chk).show=t.checked;rMain()}else if('zero'in t.dataset){S.zero=t.checked;rMain()}
+else if(t.id=='sort'){S.sort=t.value;rList()}else if(t.id=='fd'||t.id=='ff')readFiles(t.files)});
+document.addEventListener('dblclick',e=>{const fn=e.target.closest&&e.target.closest('[data-fn]');if(fn){clearTimeout(S.ct);S.ren=+fn.dataset.fn;rList()}});
+document.addEventListener('keydown',e=>{const t=e.target;if(t.dataset&&t.dataset.ren){if(e.key=='Enter')t.blur();else if(e.key=='Escape'){S.ren=null;rList()}}});
+document.addEventListener('focusout',e=>{const t=e.target;if(t.dataset&&t.dataset.ren&&S.ren==+t.dataset.ren){S.ren=null;const f=S.folders.find(x=>x.id==t.dataset.ren),n=t.value.trim();if(f&&n)f.name=n;chgF()}});
+const tgt=r=>r.dataset.ap?(r.dataset.ap!=S.drag?{app:r.dataset.ap}:null):r.dataset.fr?{f:S.folders.find(x=>x.id==r.dataset.fr)}:null;
+const clr=()=>document.querySelectorAll('.dro').forEach(x=>x.classList.remove('dro'));
+const lrow=e=>$('#list').contains(e.target)&&e.target.closest?e.target.closest('.row'):null;
+document.addEventListener('dragstart',e=>{const r=e.target.closest&&e.target.closest('[data-ap]');if(!r)return;S.drag=r.dataset.ap;e.dataTransfer.setData('text/plain',S.drag);e.dataTransfer.effectAllowed='move'});
+document.addEventListener('dragend',()=>{S.drag=null;clr()});
+document.addEventListener('dragover',e=>{if(!S.drag)return;e.preventDefault();clr();const r=lrow(e);if(r&&tgt(r))r.classList.add('dro')});
+document.addEventListener('drop',e=>{if(!S.drag)return;e.preventDefault();const x=S.drag,r=lrow(e),g=r&&tgt(r);S.drag=null;clr();const cx=fol(x),rm=()=>S.folders.forEach(f=>f.items=f.items.filter(i=>i!=x));
+if(!r){if(!cx)return;rm()}
+else{if(!g)return;
+if(g.f){if(g.f.items.includes(x))return;rm();g.f.items.push(x)}
+else{const fy=fol(g.app);if(fy&&fy===cx)return;rm();if(fy)fy.items.push(x);else{const id=S.fid++;S.folders.push({id,name:'Folder '+id,on:true,open:true,color:fc(id),items:[g.app,x]});S.ren=id}}}
+chgF()});
+$('#q').oninput=e=>{S.q=e.target.value;rList()};
+const tp=$('#tp');document.addEventListener('mousemove',e=>{const t=e.target.closest&&e.target.closest('[data-tip]');if(!t){tp.style.display='none';return}tp.innerHTML=esc(t.dataset.tip).replace(/\n/g,'<br>');tp.style.display='block';tp.style.left=Math.min(e.clientX+14,innerWidth-tp.offsetWidth-8)+'px';tp.style.top=Math.min(e.clientY+14,innerHeight-tp.offsetHeight-8)+'px'});
+let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(S.scr=='main')fill();else rMain()},100)});
+async function readFiles(fl){const f=[...fl].filter(f=>/\.(ndjson|jsonl|json|txt|log)$/i.test(f.name));load(await Promise.all(f.map(x=>x.text())))}
+addEventListener('dragover',e=>e.preventDefault());addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files.length)readFiles(e.dataTransfer.files)});
+function demo(){let r=7;const rnd=()=>(r=r*16807%2147483647)/2147483647,o=[],
+A=[['chrome.exe','Google Chrome',['YouTube - Google Chrome','Tauri docs - Google Chrome','GitHub - Google Chrome'],.4],['code.exe','Visual Studio Code',['Worker.cs - Visual Studio Code','App.tsx - Visual Studio Code'],.35],['telegram.exe','Telegram',['Telegram'],.12],['spotify.exe','Spotify',['Spotify'],.08],['winword.exe','Microsoft Word',['Report - Word'],.05]];
+const ts=(d,s)=>`${d}T${P2(Math.floor(s/3600)%24)}:${P2(Math.floor(s/60)%60)}:${P2(Math.floor(s%60))}+02:00`;
+for(let i=44;i>=0;i--){const d=add('2026-10-25',-i),we=[0,6].includes(dow(d));let t=7*3600+rnd()*9000,end=t+(we?2:5)*3600+rnd()*4*3600;if(end>86000)end=86000;
+o.push(`{"event_type":"logon","time":"${ts(d,t)}"}`);
+while(t<end){let x=rnd(),a=A[0],c=0;for(const q of A){c+=q[3];if(x<c){a=q;break}}
+const pid=1000+Math.floor(rnd()*9000);if(rnd()<.15)o.push(`{"event_type":"process_start","pid":${pid},"exe_name":"${a[0]}","friendly_name":"${a[1]}","window_visible":true,"time":"${ts(d,t)}"}`);
+o.push(`{"event_type":"focus_changed","pid":${pid},"exe_name":"${a[0]}","friendly_name":"${a[1]}","window_visible":true,"window_title":"${a[2][Math.floor(rnd()*a[2].length)]}","time":"${ts(d,t)}"}`);
+t+=(rnd()<.3?8+rnd()*12:30+rnd()*rnd()*2400);if(rnd()<.03&&t<end){o.push(`{"event_type":"logout","time":"${ts(d,t)}"}`);t+=3000;o.push(`{"event_type":"logon","time":"${ts(d,t)}"}`)}}
+if(rnd()>.12)o.push(`{"event_type":"logout","time":"${ts(d,Math.min(end,86399))}"}`)}
+return o.join('\n')}
+render();
+</script></body></html>
