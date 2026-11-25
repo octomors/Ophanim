@@ -1,0 +1,154 @@
+@import "./tokens.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.4 Onest, system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+select,
+input {
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+svg text {
+  fill: var(--muted);
+  font: 10px Onest, system-ui, sans-serif;
+}
+
+svg [data-day],
+svg [data-entity] {
+  cursor: pointer;
+}
+
+.chartViewport {
+  position: absolute;
+  inset: 12px;
+}
+
+.chartViewport svg {
+  display: block;
+}
+
+.chartViewport text {
+  user-select: none;
+}
+
+.donutLayout {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.donutLayout svg {
+  flex: none;
+}
+
+.donutTotal {
+  fill: var(--ink);
+  font-size: 16px;
+}
+
+.legend {
+  min-width: 0;
+  max-height: 100%;
+  display: grid;
+  gap: 4px;
+  overflow: auto;
+}
+
+.legend button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 2px 4px;
+  background: transparent;
+  text-align: left;
+}
+
+.legend button span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legend .muted {
+  flex: none;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.dayTimeline {
+  height: 100%;
+  overflow: auto;
+}
+
+.timelineContent {
+  min-height: 100%;
+  display: flex;
+}
+
+.timelineLabels {
+  width: 140px;
+  flex: none;
+}
+
+.timelineLabels button {
+  width: 100%;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  border: 0;
+  padding: 0 4px;
+  background: transparent;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.timelineLabels button span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timelineScroller {
+  min-width: 0;
+  flex: 1;
+  overflow: auto hidden;
+}

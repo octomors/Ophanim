@@ -1,0 +1,464 @@
+.root {
+  height: 100vh;
+  min-width: 720px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.header {
+  flex: none;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.headerTitle {
+  font-weight: 600;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.header button,
+.sidebar button,
+.sidebar select,
+.sidebar input[type="search"],
+.sidebar input[type="text"],
+.appScreen button,
+.appScreen select,
+.mainContent button,
+.mainContent select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 9px;
+  color: var(--ink);
+  background: var(--panel);
+  font: inherit;
+}
+
+.header button:hover,
+.sidebar button:hover,
+.appScreen button:hover,
+.mainContent button:hover {
+  border-color: var(--accent);
+}
+
+.layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.layoutNoSidebar {
+  grid-template-columns: 1fr;
+}
+
+.sidebar {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.rangeControls,
+.sortControls,
+.selectButtons {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.rangeControls select {
+  flex: none;
+}
+
+.rangeControls strong {
+  flex: 1;
+  text-align: center;
+}
+
+.rangeControls span {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sortControls select {
+  flex: 1;
+  min-width: 0;
+}
+
+.selectButtons button {
+  flex: 1;
+  padding: 4px 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.appList {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.listRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.listRow:hover {
+  background: var(--bg);
+}
+
+.selected {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.nameButton {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  border: 0 !important;
+  padding: 0 !important;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent !important;
+}
+
+.folderRow .nameButton {
+  font-weight: 500;
+}
+
+.value {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.folderIcon {
+  flex: none;
+  width: 14px;
+  font-size: 14px;
+  line-height: 12px;
+}
+
+.chevron {
+  flex: none;
+  width: 18px;
+  border: 0 !important;
+  padding: 0 !important;
+  color: var(--muted) !important;
+}
+
+.renameInput {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 4px !important;
+}
+
+.totalCount {
+  flex: none;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mainContent {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  overflow: hidden;
+}
+
+.topBar {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 10px;
+}
+
+.topBar h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.tiles {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tile {
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.tile small {
+  display: block;
+  color: var(--muted);
+}
+
+.tile b {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.tile select {
+  width: 100%;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover {
+  border-color: var(--accent);
+}
+
+.card {
+  position: relative;
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.chartCard {
+  flex: 1;
+  overflow: hidden;
+}
+
+.chartNote {
+  position: absolute;
+  right: 12px;
+  top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.empty {
+  max-width: 520px;
+  margin: 8vh auto;
+  padding: 32px;
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.empty button {
+  margin: 4px;
+}
+
+.error {
+  color: #c33b44;
+}
+
+.appScreen {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 300px max-content minmax(420px, 1fr);
+  gap: 10px;
+}
+
+.appMetrics {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.appMetrics h1 {
+  margin: 0;
+  font-size: 36px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.exeLabel {
+  font-size: 28px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.metricPair {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.metricPair .tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metricPair .tile label {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.detailCharts {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ringCard {
+  position: relative;
+  flex: none;
+  height: calc(var(--ring-size, 160px) + 40px);
+  overflow: hidden;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.ringCard svg {
+  position: absolute;
+  left: 12px;
+  top: 28px;
+}
+
+.calendarCard,
+.weekdayCard,
+.titleList {
+  min-height: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.calendarCard {
+  flex: none;
+  overflow: hidden;
+}
+
+.weekdayCard {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.weekdayBars {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+}
+
+.weekdayBar {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 12px;
+}
+
+.weekdayTrack {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.weekdayTrack > div {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+}
+
+.titleList {
+  overflow: auto;
+}
+
+.titleRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+}
+
+.titleRow span:first-child {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titleRow span:last-child {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 20;
+  max-width: 320px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: var(--bg);
+  background: var(--ink);
+  font-size: 12px;
+  pointer-events: none;
+  white-space: pre-line;
+}
+
+@media (max-width: 1100px) {
+  .tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .appScreen {
+    grid-template-columns: minmax(240px, 1fr) max-content minmax(320px, 1.3fr);
+  }
+}
