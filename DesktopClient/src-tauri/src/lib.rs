@@ -53,6 +53,7 @@ pub fn run() {
             commands::load_demo,
             commands::load_bundled_demo,
             commands::set_app_visibility,
+            commands::set_apps_visibility,
             commands::set_folder,
             commands::save_folders
         ])

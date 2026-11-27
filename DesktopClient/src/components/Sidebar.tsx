@@ -1,8 +1,10 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppDto, ClientStateDto, FolderDto } from "../api/types";
 import type { AppStats } from "../lib";
 import { formatDate, formatDuration, sortValue } from "../lib";
 import type { Screen, SortKey } from "../state";
+import { getAppsVisibilityToggle, getFoldersVisibilityToggle } from "../folderRules";
+import type { FolderDropTarget } from "../folderRules";
 import styles from "../App.module.css";
 
 type Props = {
@@ -20,12 +22,16 @@ type Props = {
   onDirection: () => void;
   onSearch: (value: string) => void;
   onAppVisibility: (app: AppDto, show: boolean) => void;
+  onAppsVisibility: (exes: string[], show: boolean) => void;
   onFolders: (folders: FolderDto[], nextId: number) => void;
   onOpenDay: (day: string) => void;
   onOpenEntity: (key: string) => void;
+  draggedApp: string | null;
+  dropTarget: FolderDropTarget | null;
+  folderToRenameId: number | null;
+  onFolderRenameConsumed: () => void;
 };
 
-const nextFolderColor = (id: number) => `hsl(${Math.round(id * 137.508) % 360} 65% 50%)`;
 const sortLabels: Record<SortKey, string> = {
   seconds: "By time",
   first: "By first seen",
@@ -38,12 +44,21 @@ const sortLabels: Record<SortKey, string> = {
 export function Sidebar(props: Props) {
   const {
     data, stats, screen, day, entity, span, sort, descending, search,
-    onSpan, onSort, onDirection, onSearch, onAppVisibility, onFolders,
-    onOpenDay, onOpenEntity,
+    onSpan, onSort, onDirection, onSearch, onAppVisibility, onAppsVisibility,
+    onFolders, onOpenDay, onOpenEntity, draggedApp, dropTarget,
+    folderToRenameId, onFolderRenameConsumed,
   } = props;
   const [renameId, setRenameId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const clickTimer = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (folderToRenameId === null) return;
+    const folder = data.folders.find((item) => item.id === folderToRenameId);
+    if (!folder) return;
+    setRenameId(folder.id);
+    setRenameValue(folder.name);
+    onFolderRenameConsumed();
+  }, [data.folders, folderToRenameId, onFolderRenameConsumed]);
   const query = search.trim().toLowerCase();
   const first = data.days[0]?.date;
   const last = data.days[data.days.length - 1]?.date;
@@ -113,50 +128,6 @@ export function Sidebar(props: Props) {
     setRenameId(null);
   };
 
-  const handleDrop = (event: React.DragEvent, target?: { app?: string; folder?: FolderDto }) => {
-    const dragged = event.dataTransfer.getData("text/plain");
-    if (!dragged) return;
-    event.preventDefault();
-    const sourceFolder = folderByItem.get(dragged);
-    const removeDragged = (folders: FolderDto[]) =>
-      folders.map((folder) => ({ ...folder, items: folder.items.filter((item) => item !== dragged) }));
-    let folders = removeDragged(data.folders);
-    if (target?.folder) {
-      if (target.folder.items.includes(dragged)) return;
-      folders = folders.map((folder) => folder.id === target.folder?.id
-        ? { ...folder, items: [...folder.items, dragged] }
-        : folder);
-      saveFolders(folders);
-      return;
-    }
-    if (target?.app) {
-      if (target.app === dragged) return;
-      const targetFolder = folderByItem.get(target.app);
-      if (sourceFolder && sourceFolder.id === targetFolder?.id) return;
-      if (targetFolder) {
-        folders = folders.map((folder) => folder.id === targetFolder.id
-          ? { ...folder, items: [...folder.items, dragged] }
-          : folder);
-        saveFolders(folders);
-      } else {
-        const id = Math.max(1, ...folders.map((folder) => folder.id + 1));
-        folders.push({
-          id,
-          name: `Folder ${id}`,
-          on: true,
-          open: true,
-          items: [target.app, dragged],
-          color: nextFolderColor(id),
-        });
-        setRenameId(id);
-        setRenameValue(`Folder ${id}`);
-        saveFolders(folders, id + 1);
-      }
-      return;
-    }
-    if (sourceFolder) saveFolders(folders);
-  };
-
   const appRow = (app: AppDto, nested = false, activeFolder?: FolderDto) => {
     const value = stats.get(app.exe);
     if (!value) return null;
@@ -165,16 +136,9 @@ export function Sidebar(props: Props) {
     return (
       <div
         key={app.exe}
-        className={`${styles.listRow} ${selected ? styles.selected : ""}`}
+        className={`${styles.listRow} ${selected ? styles.selected : ""} ${draggedApp === app.exe ? styles.dragging : ""} ${dropTarget && "app" in dropTarget && dropTarget.app === app.exe ? styles.dropTarget : ""}`}
         style={nested ? { paddingLeft: 26 } : undefined}
-        draggable
         data-app={app.exe}
-        onDragStart={(event) => {
-          event.dataTransfer.setData("text/plain", app.exe);
-          event.dataTransfer.effectAllowed = "move";
-        }}
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => handleDrop(event, { app: app.exe })}
       >
         {screen !== "app" && (
           <input
@@ -205,10 +169,8 @@ export function Sidebar(props: Props) {
     return (
       <div key={folder.id}>
         <div
-          className={`${styles.listRow} ${styles.folderRow} ${selected ? styles.selected : ""}`}
+          className={`${styles.listRow} ${styles.folderRow} ${selected ? styles.selected : ""} ${dropTarget && "folder" in dropTarget && dropTarget.folder === folder.id ? styles.dropTarget : ""}`}
           data-folder={folder.id}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => handleDrop(event, { folder })}
         >
           {screen !== "app" && (
             <input
@@ -260,17 +222,11 @@ export function Sidebar(props: Props) {
   };
 
   const selectApps = () => {
-    const listed = apps.filter((app) => !(folderByItem.get(app.exe)?.on));
-    const allSelected = listed.every((app) => app.show);
-    listed.forEach((app) => onAppVisibility(app, !allSelected));
+    const toggle = getAppsVisibilityToggle(data.apps, data.folders);
+    if (toggle.exes.length) onAppsVisibility(toggle.exes, toggle.show);
   };
   const selectFolders = () => {
-    const allEnabled = visibleFolders.every((folder) => folder.on);
-    saveFolders(data.folders.map((folder) =>
-      visibleFolders.some((visible) => visible.id === folder.id)
-        ? { ...folder, on: !allEnabled }
-        : folder,
-    ));
+    if (data.folders.length) saveFolders(getFoldersVisibilityToggle(data.folders));
   };
 
   return (
@@ -327,8 +283,6 @@ export function Sidebar(props: Props) {
       )}
       <div
         className={styles.appList}
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => handleDrop(event)}
       >
         {visibleFolders.map(folderRow)}
         {apps

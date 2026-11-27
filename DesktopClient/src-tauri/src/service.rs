@@ -192,6 +192,13 @@ impl LogService {
         settings_store::save(&self.settings).map_err(|error| error.to_string())
     }
 
+    pub fn set_apps_visibility(&mut self, exes: &[String], show: bool) -> Result<(), String> {
+        for exe in exes {
+            self.settings.app_visibility.insert(exe.clone(), show);
+        }
+        settings_store::save(&self.settings).map_err(|error| error.to_string())
+    }
+
     pub fn set_folder(&mut self, folder: FolderSetting) -> Result<(), String> {
         let mut folders = self.settings.folders.clone();
         folders.retain(|value| value.id != folder.id);

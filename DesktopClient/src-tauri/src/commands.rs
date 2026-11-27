@@ -143,6 +143,19 @@ pub fn set_app_visibility(
 }
 
 #[tauri::command]
+pub fn set_apps_visibility(
+    exes: Vec<String>,
+    show: bool,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .service
+        .lock()
+        .map_err(|error| error.to_string())?
+        .set_apps_visibility(&exes, show)
+}
+
+#[tauri::command]
 pub fn set_folder(folder: FolderSetting, state: tauri::State<'_, AppState>) -> Result<(), String> {
     state
         .service

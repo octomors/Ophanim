@@ -23,6 +23,8 @@ export const loadFilePaths = (paths: string[]) =>
 export const loadDemo = () => invoke<ClientStateDto>("load_bundled_demo");
 export const setAppVisibility = (exe: string, show: boolean) =>
   invoke<void>("set_app_visibility", { exe, show });
+export const setAppsVisibility = (exes: string[], show: boolean) =>
+  invoke<void>("set_apps_visibility", { exes, show });
 export const saveFolders = (folders: FolderDto[], nextId: number) =>
   invoke<ClientStateDto>("save_folders", {
     folders: folders.map(({ id, name, on, open, items }) => ({

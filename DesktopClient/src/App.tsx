@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   chooseLogFiles,
   chooseLogFolder,
@@ -12,6 +12,7 @@ import {
   loadFolder,
   saveFolders,
   setAppVisibility,
+  setAppsVisibility,
 } from "./api/client";
 import type { AppDto, ClientStateDto, FocusSegment, FolderDto } from "./api/types";
 import { Sidebar } from "./components/Sidebar";
@@ -25,11 +26,22 @@ import {
   getStats,
   visibleSegments,
 } from "./lib";
+import { moveApp } from "./folderRules";
+import type { FolderDropTarget } from "./folderRules";
 import { useUi } from "./state";
 import styles from "./App.module.css";
 import "./styles/base.css";
 
 type Tooltip = { x: number; y: number; text: string };
+type PointerDrag = {
+  pointerId: number;
+  app: string;
+  startX: number;
+  startY: number;
+  element: HTMLElement;
+  active: boolean;
+  cancelled: boolean;
+};
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -57,6 +69,11 @@ export default function App() {
   const setAppSegments = useUi((state) => state.setAppSegments);
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
   const [timelineZoom, setTimelineZoom] = useState(1);
+  const [draggedApp, setDraggedApp] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<FolderDropTarget | null>(null);
+  const [folderToRename, setFolderToRename] = useState<number | null>(null);
+  const pointerDrag = useRef<PointerDrag | null>(null);
+  const suppressClick = useRef(false);
 
   const updateData = useCallback(async (next: ClientStateDto, activeSpan = useUi.getState().span) => {
     setData(next);
@@ -205,31 +222,135 @@ export default function App() {
       setError(reason, "Could not save folders");
     }
   };
-  const dropAppOutsideFolder = async (appKey: string) => {
-    if (!data) return;
-    const folders = data.folders
-      .map((folder) => ({ ...folder, items: folder.items.filter((item) => item !== appKey) }))
-      .filter((folder) => folder.items.length > 0);
-    if (folders.length === data.folders.length && folders.every((folder, index) => folder.items.length === data.folders[index].items.length)) {
-      return;
+  const changeAppsVisibility = async (exes: string[], show: boolean) => {
+    if (!data || !exes.length) return;
+    const current = useUi.getState().data ?? data;
+    const selected = new Set(exes);
+    setData({
+      ...current,
+      apps: current.apps.map((app) => selected.has(app.exe) ? { ...app, show } : app),
+    });
+    try {
+      await setAppsVisibility(exes, show);
+    } catch (reason) {
+      setError(reason, "Could not save app visibility");
+      try {
+        setData(await getState());
+      } catch (reloadReason) {
+        setError(reloadReason, "Could not reload app visibility");
+      }
     }
-    await changeFolders(folders, Math.max(1, ...folders.map((folder) => folder.id + 1)));
   };
 
-  const handleDrop = (event: React.DragEvent) => {
-    const files = event.dataTransfer.files;
-    if (files.length) {
-      event.preventDefault();
-      void importDroppedFiles(files);
-      return;
+  const changeDraggedApp = (app: string, target: FolderDropTarget | null) => {
+    if (!data) return;
+    const result = moveApp(data.folders, app, target);
+    if (!result) return;
+    if (result.createdFolderId !== undefined) setFolderToRename(result.createdFolderId);
+    void changeFolders(result.folders, result.nextId);
+  };
+
+  const folderRenameConsumed = useCallback(() => setFolderToRename(null), []);
+
+  const targetAtPoint = (x: number, y: number): FolderDropTarget | null => {
+    const element = document.elementFromPoint(x, y);
+    const appRow = element?.closest<HTMLElement>("[data-app]");
+    if (appRow?.dataset.app) return { app: appRow.dataset.app };
+    const folderRow = element?.closest<HTMLElement>("[data-folder]");
+    const folderId = Number(folderRow?.dataset.folder);
+    return Number.isInteger(folderId) && folderId > 0 ? { folder: folderId } : null;
+  };
+
+  const startPointerDrag = (event: React.PointerEvent) => {
+    if (event.button !== 0 || !event.isPrimary) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("input, select, textarea")) return;
+    const row = target.closest<HTMLElement>("[data-app]");
+    const app = row?.dataset.app;
+    if (!row || !app) return;
+    pointerDrag.current = {
+      pointerId: event.pointerId,
+      app,
+      startX: event.clientX,
+      startY: event.clientY,
+      element: row,
+      active: false,
+      cancelled: false,
+    };
+  };
+
+  const movePointerDrag = (event: React.PointerEvent) => {
+    const drag = pointerDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId || drag.cancelled) return;
+    if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= 6) {
+      drag.active = true;
+      drag.element.setPointerCapture(drag.pointerId);
+      document.getSelection()?.removeAllRanges();
+      setDraggedApp(drag.app);
     }
-    const draggedApp = event.dataTransfer.getData("text/plain");
-    if (!draggedApp || (event.target as HTMLElement).closest("[data-app], [data-folder], aside")) return;
+    if (!drag.active) return;
     event.preventDefault();
-    void dropAppOutsideFolder(draggedApp);
+    const target = targetAtPoint(event.clientX, event.clientY);
+    const visibleTarget = target && !("app" in target && target.app === drag.app) ? target : null;
+    setDropTarget((previous) => {
+      if (!previous || !visibleTarget) return visibleTarget;
+      if ("app" in previous && "app" in visibleTarget && previous.app === visibleTarget.app) return previous;
+      if ("folder" in previous && "folder" in visibleTarget && previous.folder === visibleTarget.folder) return previous;
+      return visibleTarget;
+    });
+  };
+
+  const finishPointerDrag = (event: React.PointerEvent) => {
+    const drag = pointerDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    pointerDrag.current = null;
+    if (drag.cancelled) {
+      suppressClick.current = true;
+      window.setTimeout(() => { suppressClick.current = false; }, 0);
+    }
+    if (drag.active && !drag.cancelled) {
+      event.preventDefault();
+      if (event.clientX >= 0 && event.clientY >= 0 &&
+        event.clientX < window.innerWidth && event.clientY < window.innerHeight) {
+        changeDraggedApp(drag.app, targetAtPoint(event.clientX, event.clientY));
+      }
+      suppressClick.current = true;
+      window.setTimeout(() => { suppressClick.current = false; }, 0);
+    }
+    setDraggedApp(null);
+    setDropTarget(null);
+  };
+
+  const cancelPointerDragOnEscape = useCallback((event: KeyboardEvent) => {
+    const drag = pointerDrag.current;
+    if (event.key !== "Escape" || !drag?.active) return;
+    event.preventDefault();
+    drag.cancelled = true;
+    drag.active = false;
+    setDraggedApp(null);
+    setDropTarget(null);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("keydown", cancelPointerDragOnEscape);
+    return () => window.removeEventListener("keydown", cancelPointerDragOnEscape);
+  }, [cancelPointerDragOnEscape]);
+
+  const cancelPointerDrag = () => {
+    pointerDrag.current = null;
+    setDraggedApp(null);
+    setDropTarget(null);
+  };
+
+  const onClickCapture = (event: React.MouseEvent) => {
+    if (!suppressClick.current) return;
+    suppressClick.current = false;
+    event.preventDefault();
+    event.stopPropagation();
   };
 
   const onPointerMove = (event: React.PointerEvent) => {
+    movePointerDrag(event);
     const element = (event.target as HTMLElement).closest<HTMLElement>("[data-tip]");
     const text = element?.dataset.tip;
     if (!text) {
@@ -252,10 +373,18 @@ export default function App() {
       className={styles.root}
       onPointerMove={onPointerMove}
       onPointerLeave={() => setTooltip(null)}
+      onPointerDownCapture={startPointerDrag}
+      onPointerUp={finishPointerDrag}
+      onPointerCancel={cancelPointerDrag}
+      onClickCapture={onClickCapture}
       onDragOver={(event) => {
-        if (event.dataTransfer.files.length || event.dataTransfer.types.includes("text/plain")) event.preventDefault();
+        if (event.dataTransfer.files.length) event.preventDefault();
       }}
-      onDrop={handleDrop}
+      onDrop={(event) => {
+        if (!event.dataTransfer.files.length) return;
+        event.preventDefault();
+        void importDroppedFiles(event.dataTransfer.files);
+      }}
     >
       <header className={styles.header}>
         <strong className={styles.headerTitle}>Ophanim</strong>
@@ -282,9 +411,14 @@ export default function App() {
             onDirection={() => patch({ descending: !descending })}
             onSearch={(value) => patch({ search: value })}
             onAppVisibility={(app, show) => void changeVisibility(app, show)}
+            onAppsVisibility={(exes, show) => void changeAppsVisibility(exes, show)}
             onFolders={(folders, nextId) => void changeFolders(folders, nextId)}
             onOpenDay={(value) => void openDay(value)}
             onOpenEntity={openEntity}
+            draggedApp={draggedApp}
+            dropTarget={dropTarget}
+            folderToRenameId={folderToRename}
+            onFolderRenameConsumed={folderRenameConsumed}
           />
         )}
         <main className={styles.mainContent}>
