@@ -436,6 +436,7 @@ impl LogService {
                         .map(|segment| segment.end.saturating_sub(segment.start))
                         .max()
                         .unwrap_or_default();
+                    aggregate.focus_count = merged.len().min(u32::MAX as usize) as u32;
                 }
                 segment_days.insert(date.clone(), merged);
             }
@@ -524,6 +525,7 @@ mod tests {
         let daily = &service.folder_daily[&1][&date];
         assert_eq!(daily.seconds, 20);
         assert_eq!(daily.max_focus, 20);
+        assert_eq!(daily.focus_count, 1);
         let day = service.day_detail(&date).unwrap();
         assert!(
             day.segments.iter().any(|segment| {

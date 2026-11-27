@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 pub struct AppDayAggregate {
     pub seconds: u64,
     pub max_focus: u32,
+    pub focus_count: u32,
     pub launches: u32,
 }
 
@@ -32,6 +33,7 @@ pub fn prepare(days: &BTreeMap<String, DayData>, apps: &BTreeMap<String, AppInfo
             let seconds = segment.end.saturating_sub(segment.start);
             aggregate.seconds += u64::from(seconds);
             aggregate.max_focus = aggregate.max_focus.max(seconds);
+            aggregate.focus_count = aggregate.focus_count.saturating_add(1);
         }
         for (exe, launches) in &data.launches {
             daily.entry(exe.clone()).or_default().launches += launches;
@@ -83,5 +85,6 @@ mod tests {
         let prepared = prepare(&days, &apps);
         assert_eq!(prepared.day_apps["2026-09-11"]["code.exe"].seconds, 60);
         assert_eq!(prepared.app_days["code.exe"]["2026-09-11"].max_focus, 60);
+        assert_eq!(prepared.day_apps["2026-09-11"]["code.exe"].focus_count, 1);
     }
 }

@@ -54,6 +54,8 @@ export type AppStats = {
   folder?: FolderDto;
 };
 
+export type VisibleDailyAggregates = Map<string, Map<string, AppDayAggregate>>;
+
 export function dateRange(data: ClientStateDto, span: number, day?: string | null): string[] {
   if (day) return [day];
   if (!data.days.length) return [];
@@ -146,6 +148,24 @@ export function visibleEntities(data: ClientStateDto): Map<string, AppDto | Fold
 export function visibleSegments(data: ClientStateDto, segments: FocusSegment[]): FocusSegment[] {
   const active = visibleEntities(data);
   return segments.filter((segment) => active.has(segment.exe));
+}
+
+export function visibleDailyAggregates(
+  data: ClientStateDto,
+  dates: string[],
+): VisibleDailyAggregates {
+  const active = visibleEntities(data);
+  const selectedDates = new Set(dates);
+  const result: VisibleDailyAggregates = new Map();
+  for (const day of data.days) {
+    if (!selectedDates.has(day.date)) continue;
+    const entities = new Map<string, AppDayAggregate>();
+    for (const [key, aggregate] of Object.entries(day.apps)) {
+      if (active.has(key)) entities.set(key, aggregate);
+    }
+    result.set(day.date, entities);
+  }
+  return result;
 }
 
 export function entityInfo(data: ClientStateDto, key: string): AppDto | FolderDto | undefined {

@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import type { ClientStateDto, FocusSegment, OverviewDto } from "../api/types";
 import { useUi } from "../state";
 import {
@@ -7,13 +6,15 @@ import {
   formatDuration,
   months,
   segmentClusters,
-  visibleSegments,
 } from "../lib";
+import type { VisibleDailyAggregates } from "../lib";
 import { useSize } from "./useSize";
 
 type Props = {
   data: ClientStateDto;
   overview: OverviewDto;
+  dailyAggregates: VisibleDailyAggregates;
+  segments: FocusSegment[];
   onEntity: (key: string) => void;
   onDay: (date: string) => void;
 };
@@ -21,13 +22,9 @@ type Props = {
 const label = (value: number) => String(value).padStart(2, "0");
 const gray = "#9aa1ad";
 
-export function OverviewChart({ data, overview, onEntity, onDay }: Props) {
+export function OverviewChart({ data, overview, dailyAggregates, segments, onEntity, onDay }: Props) {
   const view = useUi((state) => state.view);
   const { ref, width, height } = useSize<HTMLDivElement>();
-  const visible = useMemo(
-    () => visibleSegments(data, overview.segments),
-    [data, overview.segments],
-  );
   const dates = overview.days.map((item) => item.date);
   const mode = view === "heatmap" && dates.length > 60 ? "histogram" : view;
   const open = (event: React.MouseEvent<SVGElement>) => {
@@ -42,10 +39,10 @@ export function OverviewChart({ data, overview, onEntity, onDay }: Props) {
     <div ref={ref} className="chartViewport">
       {width > 0 && height > 0 && (
         mode === "heatmap"
-          ? <Heatmap data={data} overview={overview} segments={visible} width={width} height={height} onClick={open} />
+          ? <Heatmap data={data} overview={overview} segments={segments} width={width} height={height} onClick={open} />
           : mode === "histogram"
-            ? <Histogram data={data} dates={dates} segments={visible} width={width} height={height} onClick={open} />
-            : <Donut data={data} segments={visible} width={width} height={height} onEntity={onEntity} />
+            ? <Histogram data={data} dates={dates} dailyAggregates={dailyAggregates} width={width} height={height} onClick={open} />
+            : <Donut data={data} dailyAggregates={dailyAggregates} width={width} height={height} onEntity={onEntity} />
       )}
       {view === "heatmap" && dates.length > 60 && (
         <span className="chartNote">Heatmap is available for spans up to 60 days.</span>
@@ -187,14 +184,14 @@ function Heatmap({
 function Histogram({
   data,
   dates,
-  segments,
+  dailyAggregates,
   width,
   height,
   onClick,
 }: {
   data: ClientStateDto;
   dates: string[];
-  segments: FocusSegment[];
+  dailyAggregates: VisibleDailyAggregates;
   width: number;
   height: number;
   onClick: (event: React.MouseEvent<SVGElement>) => void;
@@ -202,10 +199,12 @@ function Histogram({
   const monthly = dates.length > 120;
   const keys = [...new Set(dates.map((date) => monthly ? date.slice(0, 7) : date))];
   const entityTime = new Map<string, Map<string, number>>();
-  segments.forEach((segment) => {
-    const key = monthly ? segment.day.slice(0, 7) : segment.day;
+  dailyAggregates.forEach((entities, date) => {
+    const key = monthly ? date.slice(0, 7) : date;
     const map = entityTime.get(key) ?? new Map<string, number>();
-    map.set(segment.exe, (map.get(segment.exe) ?? 0) + segment.end - segment.start);
+    entities.forEach((aggregate, entity) => {
+      map.set(entity, (map.get(entity) ?? 0) + aggregate.seconds);
+    });
     entityTime.set(key, map);
   });
   const total = (key: string) => [...(entityTime.get(key)?.values() ?? [])].reduce((sum, value) => sum + value, 0);
@@ -288,19 +287,21 @@ function Histogram({
 
 function Donut({
   data,
-  segments,
+  dailyAggregates,
   width,
   height,
   onEntity,
 }: {
   data: ClientStateDto;
-  segments: FocusSegment[];
+  dailyAggregates: VisibleDailyAggregates;
   width: number;
   height: number;
   onEntity: (key: string) => void;
 }) {
   const totals = new Map<string, number>();
-  segments.forEach((segment) => totals.set(segment.exe, (totals.get(segment.exe) ?? 0) + segment.end - segment.start));
+  dailyAggregates.forEach((entities) => entities.forEach((aggregate, entity) => {
+    totals.set(entity, (totals.get(entity) ?? 0) + aggregate.seconds);
+  }));
   const total = [...totals.values()].reduce((sum, value) => sum + value, 0) || 1;
   const entries = [...totals].sort((a, b) => b[1] - a[1]);
   const grouped = entries.filter(([, value]) => value / total >= 0.02);

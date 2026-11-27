@@ -1,6 +1,7 @@
 export type AppDayAggregate = {
   seconds: number;
   max_focus: number;
+  focus_count: number;
   launches: number;
 };
 

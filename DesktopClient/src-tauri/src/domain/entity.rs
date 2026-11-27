@@ -22,6 +22,7 @@ pub fn folder_aggregate(
                 target.seconds += aggregate.seconds;
                 target.launches += aggregate.launches;
                 target.max_focus = target.max_focus.max(aggregate.max_focus);
+                target.focus_count = target.focus_count.saturating_add(aggregate.focus_count);
             }
         }
     }
@@ -62,6 +63,7 @@ mod tests {
                     AppDayAggregate {
                         seconds: 50,
                         max_focus: 30,
+                        focus_count: 2,
                         launches: 1,
                     },
                 )]),
@@ -73,6 +75,7 @@ mod tests {
                     AppDayAggregate {
                         seconds: 40,
                         max_focus: 25,
+                        focus_count: 3,
                         launches: 2,
                     },
                 )]),
@@ -81,6 +84,7 @@ mod tests {
         let aggregate = folder_aggregate(&["a.exe".into(), "b.exe".into()], &app_days);
         assert_eq!(aggregate["2026-09-11"].seconds, 90);
         assert_eq!(aggregate["2026-09-11"].max_focus, 30);
+        assert_eq!(aggregate["2026-09-11"].focus_count, 5);
         assert_eq!(aggregate["2026-09-11"].launches, 3);
     }
 

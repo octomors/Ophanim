@@ -14,7 +14,7 @@ import {
   setAppVisibility,
   setAppsVisibility,
 } from "./api/client";
-import type { AppDto, ClientStateDto, FocusSegment, FolderDto } from "./api/types";
+import type { AppDayAggregate, AppDto, ClientStateDto, FocusSegment, FolderDto } from "./api/types";
 import { Sidebar } from "./components/Sidebar";
 import { DayTimeline, dayTotals } from "./charts/DayTimeline";
 import { AppDetailScreen, appScreenRange } from "./charts/DetailScreen";
@@ -25,6 +25,7 @@ import {
   formatDuration,
   getStats,
   visibleSegments,
+  visibleDailyAggregates,
 } from "./lib";
 import { moveApp } from "./folderRules";
 import type { FolderDropTarget } from "./folderRules";
@@ -56,6 +57,7 @@ export default function App() {
   const day = useUi((state) => state.day);
   const entity = useUi((state) => state.entity);
   const span = useUi((state) => state.span);
+  const view = useUi((state) => state.view);
   const sort = useUi((state) => state.sort);
   const descending = useUi((state) => state.descending);
   const search = useUi((state) => state.search);
@@ -143,9 +145,18 @@ export default function App() {
     () => data ? getStats(data, span, screen === "day" ? day : null) : new Map(),
     [data, span, screen, day],
   );
-  const activeSegments = useMemo(
-    () => data && overview ? visibleSegments(data, overview.segments) : [],
+  const dailyAggregates = useMemo(
+    () => data && overview
+      ? visibleDailyAggregates(data, overview.days.map((item) => item.date))
+      : new Map(),
     [data, overview],
+  );
+  const needsHeatmapSegments = view === "heatmap" && (overview?.days.length ?? 0) <= 60;
+  const activeSegments = useMemo(
+    () => data && overview && needsHeatmapSegments
+      ? visibleSegments(data, overview.segments)
+      : [],
+    [data, overview, needsHeatmapSegments],
   );
 
   const setError = (reason: unknown, prefix: string) =>
@@ -460,6 +471,7 @@ export default function App() {
           ) : overview ? (
             <OverviewScreen
               data={data}
+              dailyAggregates={dailyAggregates}
               segments={activeSegments}
               onView={(value) => patch({ view: value })}
               onEntity={openEntity}
@@ -479,12 +491,14 @@ export default function App() {
 
 function OverviewScreen({
   data,
+  dailyAggregates,
   segments,
   onView,
   onEntity,
   onDay,
 }: {
   data: ClientStateDto;
+  dailyAggregates: Map<string, Map<string, AppDayAggregate>>;
   segments: FocusSegment[];
   onView: (view: "heatmap" | "histogram" | "donut") => void;
   onEntity: (entity: string) => void;
@@ -495,10 +509,15 @@ function OverviewScreen({
   if (!overview) return null;
   const totalsByDay = new Map<string, number>();
   const totalsByEntity = new Map<string, number>();
-  segments.forEach((segment) => {
-    const seconds = segment.end - segment.start;
-    totalsByDay.set(segment.day, (totalsByDay.get(segment.day) ?? 0) + seconds);
-    totalsByEntity.set(segment.exe, (totalsByEntity.get(segment.exe) ?? 0) + seconds);
+  let focusSwitches = 0;
+  dailyAggregates.forEach((entities, date) => {
+    let dayTotal = 0;
+    entities.forEach((aggregate, entity) => {
+      dayTotal += aggregate.seconds;
+      focusSwitches += aggregate.focus_count;
+      totalsByEntity.set(entity, (totalsByEntity.get(entity) ?? 0) + aggregate.seconds);
+    });
+    if (dayTotal > 0) totalsByDay.set(date, dayTotal);
   });
   const total = [...totalsByEntity.values()].reduce((sum, value) => sum + value, 0);
   const mostActive = [...totalsByDay].sort((a, b) => b[1] - a[1])[0];
@@ -543,7 +562,7 @@ function OverviewScreen({
         </div>
         <div className={styles.tile}>
           <small>Focus switches</small>
-          <b>{segments.length}</b>
+          <b>{focusSwitches}</b>
         </div>
         <div className={styles.tile}>
           <small>Daemon</small>
@@ -556,7 +575,14 @@ function OverviewScreen({
         </div>
       </div>
       <section className={`${styles.card} ${styles.chartCard}`}>
-        <OverviewChart data={data} overview={overview} onEntity={onEntity} onDay={onDay} />
+        <OverviewChart
+          data={data}
+          overview={overview}
+          dailyAggregates={dailyAggregates}
+          segments={segments}
+          onEntity={onEntity}
+          onDay={onDay}
+        />
       </section>
     </>
   );
