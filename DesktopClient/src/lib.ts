@@ -135,12 +135,15 @@ export function sortValue(stats: AppStats, sort: SortKey): number | string {
 
 export function visibleEntities(data: ClientStateDto): Map<string, AppDto | FolderDto> {
   const entities = new Map<string, AppDto | FolderDto>();
+  const folderItems = new Set<string>();
   for (const folder of data.folders) {
-    if (folder.on) entities.set(`f:${folder.id}`, folder);
+    if (folder.on) {
+      entities.set(`f:${folder.id}`, folder);
+      folder.items.forEach((item) => folderItems.add(item));
+    }
   }
   for (const app of data.apps) {
-    const folder = data.folders.find((item) => item.items.includes(app.exe) && item.on);
-    if (!folder && app.show) entities.set(app.exe, app);
+    if (!folderItems.has(app.exe) && app.show) entities.set(app.exe, app);
   }
   return entities;
 }

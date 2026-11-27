@@ -61,9 +61,9 @@ export type ClientStateDto = {
 };
 
 export type OverviewDto = {
-  days: DayDetailDto[];
+  days: Array<{
+    date: string;
+    off_periods: DaySession[];
+  }>;
   segments: FocusSegment[];
-  sessions: DaySession[];
-  off_periods: DaySession[];
-  apps: Record<string, AppDto>;
 };

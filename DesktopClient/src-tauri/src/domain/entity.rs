@@ -1,5 +1,5 @@
 use super::{aggregate::AppDayAggregate, interval::FocusInterval};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 #[derive(Clone, Debug)]
 pub struct Folder {
@@ -30,9 +30,10 @@ pub fn folder_aggregate(
 }
 
 pub fn merge_folder_intervals(items: &[String], segments: &[FocusInterval]) -> Vec<FocusInterval> {
+    let item_set = items.iter().map(String::as_str).collect::<HashSet<_>>();
     let mut members = segments
         .iter()
-        .filter(|segment| items.contains(&segment.exe))
+        .filter(|segment| item_set.contains(segment.exe.as_str()))
         .cloned()
         .collect::<Vec<_>>();
     members.sort_by_key(|segment| (segment.day.clone(), segment.start, segment.end));

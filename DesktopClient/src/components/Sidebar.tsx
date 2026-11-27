@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { AppDto, ClientStateDto, FolderDto } from "../api/types";
 import type { AppStats } from "../lib";
 import { formatDate, formatDuration, sortValue } from "../lib";
@@ -41,7 +41,7 @@ const sortLabels: Record<SortKey, string> = {
   name: "By name",
 };
 
-export function Sidebar(props: Props) {
+export const Sidebar = memo(function Sidebar(props: Props) {
   const {
     data, stats, screen, day, entity, span, sort, descending, search,
     onSpan, onSort, onDirection, onSearch, onAppVisibility, onAppsVisibility,
@@ -62,6 +62,7 @@ export function Sidebar(props: Props) {
   const query = search.trim().toLowerCase();
   const first = data.days[0]?.date;
   const last = data.days[data.days.length - 1]?.date;
+  const appByKey = useMemo(() => new Map(data.apps.map((app) => [app.exe, app])), [data.apps]);
   const folderByItem = useMemo(() => {
     const map = new Map<string, FolderDto>();
     data.folders.forEach((folder) => folder.items.forEach((item) => map.set(item, folder)));
@@ -86,7 +87,7 @@ export function Sidebar(props: Props) {
   const visibleFolders = data.folders.filter((folder) =>
     stats.has(`f:${folder.id}`) &&
     (!query || folder.name.toLowerCase().includes(query) || folder.items.some((item) => {
-      const app = data.apps.find((candidate) => candidate.exe === item);
+      const app = appByKey.get(item);
       return app ? matchesApp(app) : false;
     })),
   );
@@ -98,7 +99,7 @@ export function Sidebar(props: Props) {
   const listedFolderItems = (folder: FolderDto) => {
     const nameMatches = folder.name.toLowerCase().includes(query);
     return folder.items
-      .map((key) => data.apps.find((app) => app.exe === key))
+      .map((key) => appByKey.get(key))
       .filter((app): app is AppDto => !!app && stats.has(app.exe) && (!query || nameMatches || matchesApp(app)))
       .sort((a, b) => {
         const left = stats.get(a.exe);
@@ -164,7 +165,10 @@ export function Sidebar(props: Props) {
     const selected = screen === "app" && entity === `f:${folder.id}`;
     const autoExpand = Boolean(query && (
       folder.name.toLowerCase().includes(query) ||
-      folder.items.some((item) => data.apps.some((app) => app.exe === item && matchesApp(app)))
+      folder.items.some((item) => {
+        const app = appByKey.get(item);
+        return app ? matchesApp(app) : false;
+      })
     ));
     return (
       <div key={folder.id}>
@@ -293,7 +297,7 @@ export function Sidebar(props: Props) {
       <div className={styles.totalCount}>Total: {appCount} apps</div>
     </aside>
   );
-}
+});
 
 function navigateDay(data: ClientStateDto, day: string | null, direction: -1 | 1, onOpenDay: (day: string) => void) {
   if (!day) return;

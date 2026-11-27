@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   chooseLogFiles,
   chooseLogFolder,
@@ -14,7 +14,15 @@ import {
   setAppVisibility,
   setAppsVisibility,
 } from "./api/client";
-import type { AppDayAggregate, AppDto, ClientStateDto, FocusSegment, FolderDto } from "./api/types";
+import type {
+  AppDayAggregate,
+  AppDto,
+  ClientStateDto,
+  EntitySegmentsDto,
+  FocusSegment,
+  FolderDto,
+  OverviewDto,
+} from "./api/types";
 import { Sidebar } from "./components/Sidebar";
 import { DayTimeline, dayTotals } from "./charts/DayTimeline";
 import { AppDetailScreen, appScreenRange } from "./charts/DetailScreen";
@@ -30,10 +38,21 @@ import {
 import { moveApp } from "./folderRules";
 import type { FolderDropTarget } from "./folderRules";
 import { useUi } from "./state";
+import type { SortKey } from "./state";
 import styles from "./App.module.css";
 import "./styles/base.css";
 
 type Tooltip = { x: number; y: number; text: string };
+type CachedHeatmap = {
+  sourceDays: ClientStateDto["days"];
+  start: string;
+  end: string;
+  overview: OverviewDto;
+};
+type LoadedAppSegments = {
+  key: string;
+  segments: EntitySegmentsDto;
+};
 type PointerDrag = {
   pointerId: number;
   app: string;
@@ -50,9 +69,7 @@ function errorText(error: unknown): string {
 
 export default function App() {
   const data = useUi((state) => state.data);
-  const overview = useUi((state) => state.overview);
   const detail = useUi((state) => state.detail);
-  const appSegments = useUi((state) => state.appSegments);
   const screen = useUi((state) => state.screen);
   const day = useUi((state) => state.day);
   const entity = useUi((state) => state.entity);
@@ -66,10 +83,11 @@ export default function App() {
   const error = useUi((state) => state.error);
   const patch = useUi((state) => state.patch);
   const setData = useUi((state) => state.setData);
-  const setOverview = useUi((state) => state.setOverview);
   const setDetail = useUi((state) => state.setDetail);
-  const setAppSegments = useUi((state) => state.setAppSegments);
+  const dataRevision = useRef(0);
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
+  const [cachedHeatmap, setCachedHeatmap] = useState<CachedHeatmap | null>(null);
+  const [loadedAppSegments, setLoadedAppSegments] = useState<LoadedAppSegments | null>(null);
   const [timelineZoom, setTimelineZoom] = useState(1);
   const [draggedApp, setDraggedApp] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<FolderDropTarget | null>(null);
@@ -77,30 +95,27 @@ export default function App() {
   const pointerDrag = useRef<PointerDrag | null>(null);
   const suppressClick = useRef(false);
 
-  const updateData = useCallback(async (next: ClientStateDto, activeSpan = useUi.getState().span) => {
+  const setLoadedData = useCallback((next: ClientStateDto) => {
+    dataRevision.current += 1;
     setData(next);
-    if (next.days.length) {
-      try {
-        setOverview(await getOverview(activeSpan));
-      } catch (reason) {
-        patch({ error: `Could not prepare the selected time span: ${errorText(reason)}` });
-      }
-    } else {
-      setOverview({ days: [], segments: [], sessions: [], off_periods: [], apps: {} });
-    }
-  }, [patch, setData, setOverview]);
+  }, [setData]);
+
+  const updateData = useCallback((next: ClientStateDto) => {
+    setLoadedData(next);
+    setCachedHeatmap(null);
+    setLoadedAppSegments(null);
+  }, [setLoadedData]);
+  const folderMembershipKey = useMemo(
+    () => data ? JSON.stringify(data.folders.map(({ id, items }) => [id, items])) : "",
+    [data?.folders],
+  );
 
   useEffect(() => {
     let active = true;
     getState()
-      .then(async (result) => {
+      .then((result) => {
         if (!active) return;
-        setData(result);
-        if (result.days.length) {
-          setOverview(await getOverview(useUi.getState().span));
-        } else {
-          setOverview({ days: [], segments: [], sessions: [], off_periods: [], apps: {} });
-        }
+        setLoadedData(result);
       })
       .catch((reason: unknown) => {
         if (active) patch({ loading: false, error: `Could not load DayLogs: ${errorText(reason)}` });
@@ -108,12 +123,12 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [patch, setData, setOverview]);
+  }, [patch, setLoadedData]);
 
   useEffect(() => {
     if (!data || screen !== "day" || !day) return;
     let active = true;
-    getDayData(day).then((result) => {
+    getDayData(day, dataRevision.current, folderMembershipKey).then((result) => {
       if (active) setDetail(result);
     }).catch((reason: unknown) => {
       if (active) patch({ error: `Could not load ${formatDate(day)}: ${errorText(reason)}` });
@@ -121,42 +136,109 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [data, day, screen, patch, setDetail]);
+  }, [data?.days, day, screen, folderMembershipKey, patch, setDetail]);
+
+  const appRange = useMemo(
+    () => data && entity ? appScreenRange(data, span, entity) : { start: "", end: "" },
+    [data?.days, data?.folders, span, entity],
+  );
+  const selectedFolder = entity?.startsWith("f:")
+    ? data?.folders.find((folder) => `f:${folder.id}` === entity)
+    : undefined;
+  const appSegmentsKey = entity && appRange.start && appRange.end
+    ? `${entity}\u0000${appRange.start}\u0000${appRange.end}\u0000${dataRevision.current}\u0000${selectedFolder?.items.join("\u0001") ?? ""}`
+    : "";
+  const currentAppSegments = loadedAppSegments?.key === appSegmentsKey
+    ? loadedAppSegments.segments
+    : null;
 
   useEffect(() => {
-    if (!data || screen !== "app" || !entity) return;
-    const range = appScreenRange(data, span, entity);
-    if (!range.start || !range.end) {
-      setAppSegments({ segments: [], raw_segments: [] });
-      return;
-    }
+    if (!data || screen !== "app" || !entity || !appSegmentsKey) return;
+    if (currentAppSegments) return;
     let active = true;
-    getAppSegments(entity, range.start, range.end).then((segments) => {
-      if (active) setAppSegments(segments);
+    getAppSegments(entity, appRange.start, appRange.end, dataRevision.current).then((segments) => {
+      if (active) setLoadedAppSegments({ key: appSegmentsKey, segments });
     }).catch((reason: unknown) => {
       if (active) patch({ error: `Could not load app activity: ${errorText(reason)}` });
     });
     return () => {
       active = false;
     };
-  }, [data, entity, screen, span, patch, setAppSegments]);
+  }, [data?.days, entity, screen, appRange.start, appRange.end, appSegmentsKey, currentAppSegments, patch]);
 
+  const dates = useMemo(
+    () => data ? dateRange(data, span) : [],
+    [data?.days, span],
+  );
+  const needsHeatmapSegments =
+    screen === "overview" && view === "heatmap" && dates.length > 0 && dates.length <= 60;
+  const cachedOverview = useMemo(() => {
+    if (
+      !data ||
+      !cachedHeatmap ||
+      cachedHeatmap.sourceDays !== data.days ||
+      !dates.length ||
+      dates[0] < cachedHeatmap.start ||
+      dates[dates.length - 1] > cachedHeatmap.end
+    ) {
+      return null;
+    }
+    const visibleDates = new Set(dates);
+    return {
+      days: cachedHeatmap.overview.days.filter((item) => visibleDates.has(item.date)),
+      segments: cachedHeatmap.overview.segments.filter((segment) => visibleDates.has(segment.day)),
+    };
+  }, [data?.days, cachedHeatmap, dates]);
+  const overview = useMemo(() => {
+    if (!data) return null;
+    const offPeriods = new Map(cachedOverview?.days.map((item) => [item.date, item.off_periods]));
+    return {
+      days: dates.map((date) => ({ date, off_periods: offPeriods.get(date) ?? [] })),
+      segments: cachedOverview?.segments ?? [],
+    };
+  }, [data, dates, cachedOverview]);
+  const heatmapLoading = needsHeatmapSegments && !cachedOverview;
+  useEffect(() => {
+    if (!data || !needsHeatmapSegments || cachedOverview || !dates.length) return;
+    let active = true;
+    const start = dates[0];
+    const end = dates[dates.length - 1];
+    getOverview(span, dataRevision.current, folderMembershipKey).then((result) => {
+      if (active) {
+        setCachedHeatmap({ sourceDays: data.days, start, end, overview: result });
+      }
+    }).catch((reason: unknown) => {
+      if (active) patch({ error: `Could not prepare the selected time span: ${errorText(reason)}` });
+    });
+    return () => {
+      active = false;
+    };
+  }, [data?.days, span, needsHeatmapSegments, cachedOverview, dates, folderMembershipKey, patch]);
+
+  const statsKey = useMemo(
+    () => data
+      ? JSON.stringify([
+        data.apps.map(({ exe, name, first_seen }) => [exe, name, first_seen]),
+        data.folders.map(({ id, name, items }) => [id, name, items]),
+      ])
+      : "",
+    [data?.apps, data?.folders],
+  );
   const stats = useMemo(
     () => data ? getStats(data, span, screen === "day" ? day : null) : new Map(),
-    [data, span, screen, day],
+    [data?.days, statsKey, span, screen, day],
   );
   const dailyAggregates = useMemo(
-    () => data && overview
-      ? visibleDailyAggregates(data, overview.days.map((item) => item.date))
+    () => data
+      ? visibleDailyAggregates(data, dates)
       : new Map(),
-    [data, overview],
+    [data, dates],
   );
-  const needsHeatmapSegments = view === "heatmap" && (overview?.days.length ?? 0) <= 60;
   const activeSegments = useMemo(
-    () => data && overview && needsHeatmapSegments
+    () => data && overview && needsHeatmapSegments && !heatmapLoading
       ? visibleSegments(data, overview.segments)
       : [],
-    [data, overview, needsHeatmapSegments],
+    [data, overview, needsHeatmapSegments, heatmapLoading],
   );
 
   const setError = (reason: unknown, prefix: string) =>
@@ -196,46 +278,56 @@ export default function App() {
     }
   };
 
-  const openDay = (date: string) => {
+  const openDay = useCallback((date: string) => {
     patch({ screen: "day", day: date, error: null });
     setTimelineZoom(1);
     setDetail(null);
-  };
-  const openEntity = (key: string) => {
+  }, [patch, setDetail]);
+  const openEntity = useCallback((key: string) => {
     patch({ screen: "app", entity: key, error: null });
-  };
-  const backToOverview = () => patch({ screen: "overview", day: null, entity: null });
-  const changeSpan = async (nextSpan: number) => {
+  }, [patch]);
+  const backToOverview = useCallback(
+    () => patch({ screen: "overview", day: null, entity: null }),
+    [patch],
+  );
+  const changeSpan = useCallback((nextSpan: number) => {
     patch({ span: nextSpan });
-    if (!data?.days.length) return;
-    try {
-      setOverview(await getOverview(nextSpan));
-    } catch (reason) {
-      setError(reason, "Could not change the time span");
-    }
-  };
-  const changeVisibility = async (app: AppDto, show: boolean) => {
-    if (!data) return;
-    const next = { ...data, apps: data.apps.map((item) => item.exe === app.exe ? { ...item, show } : item) };
+  }, [patch]);
+  const changeVisibility = useCallback(async (app: AppDto, show: boolean) => {
+    const current = useUi.getState().data;
+    if (!current) return;
+    const next = { ...current, apps: current.apps.map((item) => item.exe === app.exe ? { ...item, show } : item) };
     setData(next);
     try {
       await setAppVisibility(app.exe, show);
     } catch (reason) {
       setError(reason, "Could not save app visibility");
     }
-  };
-  const changeFolders = async (folders: FolderDto[], nextId: number) => {
-    if (!data) return;
+  }, [patch, setData]);
+  const changeFolders = useCallback(async (folders: FolderDto[], nextId: number) => {
+    const current = useUi.getState().data;
+    if (!current) return;
+    const previousById = new Map(current.folders.map((folder) => [folder.id, folder]));
+    const membershipChanged =
+      current.folders.length !== folders.length ||
+      folders.some((folder) => previousById.get(folder.id)?.items.join("\u0000") !== folder.items.join("\u0000"));
+    if (!membershipChanged) setData({ ...current, folders });
     try {
-      setData(await saveFolders(folders, nextId));
-      setOverview(await getOverview(span));
+      await saveFolders(folders, nextId);
+      if (membershipChanged) setData(await getState());
     } catch (reason) {
-      setError(reason, "Could not save folders");
+      let message = `Could not save folders: ${errorText(reason)}`;
+      try {
+        setData(await getState());
+      } catch (reloadReason) {
+        message += `; could not reload folders: ${errorText(reloadReason)}`;
+      }
+      patch({ error: message });
     }
-  };
-  const changeAppsVisibility = async (exes: string[], show: boolean) => {
-    if (!data || !exes.length) return;
-    const current = useUi.getState().data ?? data;
+  }, [patch, setData]);
+  const changeAppsVisibility = useCallback(async (exes: string[], show: boolean) => {
+    const current = useUi.getState().data;
+    if (!current || !exes.length) return;
     const selected = new Set(exes);
     setData({
       ...current,
@@ -251,7 +343,15 @@ export default function App() {
         setError(reloadReason, "Could not reload app visibility");
       }
     }
-  };
+  }, [patch, setData]);
+  const changeSort = useCallback((value: SortKey) => patch({ sort: value }), [patch]);
+  const changeDirection = useCallback(() => patch({ descending: !useUi.getState().descending }), [patch]);
+  const changeSearch = useCallback((value: string) => patch({ search: value }), [patch]);
+  const changeView = useCallback((value: "heatmap" | "histogram" | "donut") => patch({ view: value }), [patch]);
+  const changeCountUnusedDays = useCallback(
+    (value: boolean) => patch({ countUnusedDays: value }),
+    [patch],
+  );
 
   const changeDraggedApp = (app: string, target: FolderDropTarget | null) => {
     if (!data) return;
@@ -417,14 +517,14 @@ export default function App() {
             sort={sort}
             descending={descending}
             search={search}
-            onSpan={(value) => void changeSpan(value)}
-            onSort={(value) => patch({ sort: value })}
-            onDirection={() => patch({ descending: !descending })}
-            onSearch={(value) => patch({ search: value })}
-            onAppVisibility={(app, show) => void changeVisibility(app, show)}
-            onAppsVisibility={(exes, show) => void changeAppsVisibility(exes, show)}
-            onFolders={(folders, nextId) => void changeFolders(folders, nextId)}
-            onOpenDay={(value) => void openDay(value)}
+            onSpan={changeSpan}
+            onSort={changeSort}
+            onDirection={changeDirection}
+            onSearch={changeSearch}
+            onAppVisibility={changeVisibility}
+            onAppsVisibility={changeAppsVisibility}
+            onFolders={changeFolders}
+            onOpenDay={openDay}
             onOpenEntity={openEntity}
             draggedApp={draggedApp}
             dropTarget={dropTarget}
@@ -460,22 +560,28 @@ export default function App() {
             <AppDetailScreen
               data={data}
               entity={entity}
-              segments={appSegments?.segments ?? []}
-              rawSegments={appSegments?.raw_segments ?? []}
+              segments={currentAppSegments?.segments ?? []}
+              rawSegments={entity.startsWith("f:")
+                ? currentAppSegments?.raw_segments ?? []
+                : currentAppSegments?.segments ?? []}
+              loading={!currentAppSegments}
               span={span}
               countUnusedDays={countUnusedDays}
-              onCountUnusedDays={(value) => patch({ countUnusedDays: value })}
+              onCountUnusedDays={changeCountUnusedDays}
               onBack={backToOverview}
-              onDay={(value) => void openDay(value)}
+              onDay={openDay}
             />
           ) : overview ? (
             <OverviewScreen
               data={data}
+              dates={dates}
+              overview={overview}
               dailyAggregates={dailyAggregates}
               segments={activeSegments}
-              onView={(value) => patch({ view: value })}
+              heatmapLoading={heatmapLoading}
+              onView={changeView}
               onEntity={openEntity}
-              onDay={(value) => void openDay(value)}
+              onDay={openDay}
             />
           ) : null}
         </main>
@@ -489,24 +595,28 @@ export default function App() {
   );
 }
 
-function OverviewScreen({
+const OverviewScreen = memo(function OverviewScreen({
   data,
+  dates,
+  overview,
   dailyAggregates,
   segments,
+  heatmapLoading,
   onView,
   onEntity,
   onDay,
 }: {
   data: ClientStateDto;
+  dates: string[];
+  overview: OverviewDto;
   dailyAggregates: Map<string, Map<string, AppDayAggregate>>;
   segments: FocusSegment[];
+  heatmapLoading: boolean;
   onView: (view: "heatmap" | "histogram" | "donut") => void;
   onEntity: (entity: string) => void;
   onDay: (day: string) => void;
 }) {
-  const overview = useUi((state) => state.overview);
   const view = useUi((state) => state.view);
-  if (!overview) return null;
   const totalsByDay = new Map<string, number>();
   const totalsByEntity = new Map<string, number>();
   let focusSwitches = 0;
@@ -521,11 +631,12 @@ function OverviewScreen({
   });
   const total = [...totalsByEntity.values()].reduce((sum, value) => sum + value, 0);
   const mostActive = [...totalsByDay].sort((a, b) => b[1] - a[1])[0];
+  const folderItems = new Set(
+    data.folders.filter((folder) => folder.on).flatMap((folder) => folder.items),
+  );
   const hidden = data.apps.filter((app) => {
-    const folder = data.folders.find((item) => item.items.includes(app.exe) && item.on);
-    return !app.show && !folder;
+    return !app.show && !folderItems.has(app.exe);
   }).length;
-  const dates = dateRange(data, useUi.getState().span);
   const activeView = view === "heatmap" && dates.length > 60 ? "histogram" : view;
 
   return (
@@ -575,20 +686,24 @@ function OverviewScreen({
         </div>
       </div>
       <section className={`${styles.card} ${styles.chartCard}`}>
-        <OverviewChart
-          data={data}
-          overview={overview}
-          dailyAggregates={dailyAggregates}
-          segments={segments}
-          onEntity={onEntity}
-          onDay={onDay}
-        />
+        {heatmapLoading ? (
+          <div className={styles.muted}>Loading heatmap…</div>
+        ) : (
+          <OverviewChart
+            data={data}
+            overview={overview}
+            dailyAggregates={dailyAggregates}
+            segments={segments}
+            onEntity={onEntity}
+            onDay={onDay}
+          />
+        )}
       </section>
     </>
   );
-}
+});
 
-function DayScreen({
+const DayScreen = memo(function DayScreen({
   data,
   detail,
   day,
@@ -659,7 +774,7 @@ function DayScreen({
       </section>
     </>
   );
-}
+});
 
 function entityName(data: ClientStateDto, entity: string) {
   return data.apps.find((app) => app.exe === entity)?.name ??

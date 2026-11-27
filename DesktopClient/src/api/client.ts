@@ -7,13 +7,50 @@ import type {
   OverviewDto,
 } from "./types";
 
-export const getState = () => invoke<ClientStateDto>("get_state");
-export const getOverview = (span: number) =>
-  invoke<OverviewDto>("get_overview", { span });
-export const getDayData = (date: string) =>
-  invoke<import("./types").DayDetailDto | null>("get_day_data", { date });
-export const getAppSegments = (entity: string, start: string, end: string) =>
-  invoke<EntitySegmentsDto>("get_app_segments", { entity, start, end });
+const stateRequests = new Map<string, Promise<ClientStateDto>>();
+const overviewRequests = new Map<string, Promise<OverviewDto>>();
+const dayRequests = new Map<string, Promise<import("./types").DayDetailDto | null>>();
+const appSegmentRequests = new Map<string, Promise<EntitySegmentsDto>>();
+
+function invokeOnce<T>(
+  pending: Map<string, Promise<T>>,
+  key: string,
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  const existing = pending.get(key);
+  if (existing) return existing;
+  const request = invoke<T>(command, args);
+  pending.set(key, request);
+  const clear = () => {
+    if (pending.get(key) === request) pending.delete(key);
+  };
+  void request.then(clear, clear);
+  return request;
+}
+
+export const getState = () => invokeOnce(stateRequests, "state", "get_state");
+export const getOverview = (span: number, revision = 0, folderSignature = "") =>
+  invokeOnce(
+    overviewRequests,
+    JSON.stringify([span, revision, folderSignature]),
+    "get_overview",
+    { span },
+  );
+export const getDayData = (date: string, revision = 0, folderSignature = "") =>
+  invokeOnce(
+    dayRequests,
+    JSON.stringify([date, revision, folderSignature]),
+    "get_day_data",
+    { date },
+  );
+export const getAppSegments = (entity: string, start: string, end: string, revision = 0) =>
+  invokeOnce(
+    appSegmentRequests,
+    JSON.stringify([entity, start, end, revision]),
+    "get_app_segments",
+    { entity, start, end },
+  );
 export const loadFolder = (path: string) =>
   invoke<ClientStateDto>("load_folder", { path });
 export const loadFiles = (files: Array<[string, string]>) =>
@@ -26,7 +63,7 @@ export const setAppVisibility = (exe: string, show: boolean) =>
 export const setAppsVisibility = (exes: string[], show: boolean) =>
   invoke<void>("set_apps_visibility", { exes, show });
 export const saveFolders = (folders: FolderDto[], nextId: number) =>
-  invoke<ClientStateDto>("save_folders", {
+  invoke<void>("save_folders", {
     folders: folders.map(({ id, name, on, open, items }) => ({
       id,
       name,

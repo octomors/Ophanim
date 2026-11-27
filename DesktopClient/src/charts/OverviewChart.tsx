@@ -1,4 +1,5 @@
 import type { ClientStateDto, FocusSegment, OverviewDto } from "../api/types";
+import { memo } from "react";
 import { useUi } from "../state";
 import {
   formatAxisDate,
@@ -22,7 +23,7 @@ type Props = {
 const label = (value: number) => String(value).padStart(2, "0");
 const gray = "#9aa1ad";
 
-export function OverviewChart({ data, overview, dailyAggregates, segments, onEntity, onDay }: Props) {
+export const OverviewChart = memo(function OverviewChart({ data, overview, dailyAggregates, segments, onEntity, onDay }: Props) {
   const view = useUi((state) => state.view);
   const { ref, width, height } = useSize<HTMLDivElement>();
   const dates = overview.days.map((item) => item.date);
@@ -49,7 +50,7 @@ export function OverviewChart({ data, overview, dailyAggregates, segments, onEnt
       )}
     </div>
   );
-}
+});
 
 function Heatmap({
   data,
@@ -79,7 +80,11 @@ function Heatmap({
     byDay.set(segment.day, list);
   });
   const colors = new Map(data.apps.map((app) => [app.exe, app.color]));
-  data.folders.forEach((folder) => colors.set(`f:${folder.id}`, folder.color));
+  const names = new Map(data.apps.map((app) => [app.exe, app.name]));
+  data.folders.forEach((folder) => {
+    colors.set(`f:${folder.id}`, folder.color);
+    names.set(`f:${folder.id}`, folder.name);
+  });
   const defs: Array<{ id: string; colors: string[] }> = [];
   const blocks = overview.days.flatMap((day, column) => {
     const x = x0 + column * cellWidth;
@@ -115,9 +120,7 @@ function Heatmap({
           })()
         : colors.get(dominant) ?? gray;
       const description = `${formatDate(day.date)}\n${ranked.map(([entity, seconds]) => {
-        const app = data.apps.find((item) => item.exe === entity);
-        const folder = data.folders.find((item) => `f:${item.id}` === entity);
-        return `${folder?.name ?? app?.name ?? entity}: ${formatDuration(seconds)}`;
+        return `${names.get(entity) ?? entity}: ${formatDuration(seconds)}`;
       }).join("\n")}${cluster.segments.length === 1 && cluster.segments[0].title ? `\n${cluster.segments[0].title}` : ""}`;
       const rectHeight = Math.max(y(cluster.start) - y(cluster.end), ranked.length > 1 ? 3 : 1.5);
       return (
@@ -216,11 +219,12 @@ function Histogram({
   const barWidth = (width - x0) / Math.max(1, keys.length);
   const y = (seconds: number) => topPad + plotHeight - seconds / (top * 3600) * plotHeight;
   const colors = new Map(data.apps.map((app) => [app.exe, app.color]));
-  data.folders.forEach((folder) => colors.set(`f:${folder.id}`, folder.color));
-  const appName = (key: string) =>
-    data.apps.find((app) => app.exe === key)?.name ??
-    data.folders.find((folder) => `f:${folder.id}` === key)?.name ??
-    key;
+  const names = new Map(data.apps.map((app) => [app.exe, app.name]));
+  data.folders.forEach((folder) => {
+    colors.set(`f:${folder.id}`, folder.color);
+    names.set(`f:${folder.id}`, folder.name);
+  });
+  const appName = (key: string) => names.get(key) ?? key;
   const labelsEvery = Math.max(1, Math.ceil(keys.length / Math.max(1, Math.floor((width - x0) / 50))));
 
   return (
@@ -311,11 +315,14 @@ function Donut({
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
   const colors = new Map(data.apps.map((app) => [app.exe, app.color]));
-  data.folders.forEach((folder) => colors.set(`f:${folder.id}`, folder.color));
+  const names = new Map(data.apps.map((app) => [app.exe, app.name]));
+  data.folders.forEach((folder) => {
+    colors.set(`f:${folder.id}`, folder.color);
+    names.set(`f:${folder.id}`, folder.name);
+  });
   const name = (entity: string) => {
     if (entity === "other") return "Other";
-    return data.apps.find((app) => app.exe === entity)?.name ??
-      data.folders.find((folder) => `f:${folder.id}` === entity)?.name ?? entity;
+    return names.get(entity) ?? entity;
   };
   const size = Math.min(height, width * 0.55);
 

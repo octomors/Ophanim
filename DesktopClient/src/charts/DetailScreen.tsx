@@ -1,6 +1,7 @@
 import type { ClientStateDto, FocusSegment } from "../api/types";
 import { dateRange, formatDate, formatDuration, months, titleWithoutAppSuffix, weekday, weekdays } from "../lib";
 import styles from "../App.module.css";
+import { memo } from "react";
 import { useSize } from "./useSize";
 
 type AppProps = {
@@ -8,6 +9,7 @@ type AppProps = {
   entity: string;
   segments: FocusSegment[];
   rawSegments: FocusSegment[];
+  loading: boolean;
   span: number;
   countUnusedDays: boolean;
   onCountUnusedDays: (value: boolean) => void;
@@ -15,11 +17,12 @@ type AppProps = {
   onDay: (day: string) => void;
 };
 
-export function AppDetailScreen({
+export const AppDetailScreen = memo(function AppDetailScreen({
   data,
   entity,
   segments,
   rawSegments,
+  loading,
   span,
   countUnusedDays,
   onCountUnusedDays,
@@ -29,6 +32,19 @@ export function AppDetailScreen({
   const app = data.apps.find((item) => item.exe === entity);
   const folder = data.folders.find((item) => `f:${item.id}` === entity);
   const name = folder?.name ?? app?.name ?? entity;
+  const { ref, height } = useSize<HTMLDivElement>();
+  if (loading) {
+    return (
+      <div className={styles.appScreen}>
+        <section className={styles.appMetrics}>
+          <button type="button" onClick={onBack}>← Back</button>
+          <h1>{name}</h1>
+          <div className={styles.exeLabel}>{folder ? `Folder · ${folder.items.length} apps` : entity}</div>
+          <p className={styles.muted}>Loading app activity…</p>
+        </section>
+      </div>
+    );
+  }
   const range = dateRange(data, span);
   const perDay = new Map<string, number>();
   const hours = Array(24).fill(0) as number[];
@@ -67,7 +83,6 @@ export function AppDetailScreen({
   const average = total / Math.max(1, divisor);
   const averageFocus = total / Math.max(1, segments.length);
   const entityColor = folder?.color ?? app?.color ?? "#2f6fed";
-  const { ref, height } = useSize<HTMLDivElement>();
   const calendar = range.slice(-371);
   const maxHour = Math.max(1, ...hours);
   const maxDaySeconds = Math.max(1, ...perDay.values());
@@ -190,7 +205,7 @@ export function AppDetailScreen({
       </section>
     </div>
   );
-}
+});
 
 function Tile({
   title,

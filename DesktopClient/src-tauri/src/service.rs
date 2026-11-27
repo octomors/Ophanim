@@ -7,8 +7,8 @@ use crate::{
         interval::{DayData, FocusInterval},
     },
     dto::{
-        AppDto, ClientStateDto, DayDetailDto, DayDto, EntitySegmentsDto, FolderDto, OverviewDto,
-        folder_color,
+        AppDto, ClientStateDto, DayDetailDto, DayDto, EntitySegmentsDto, FolderDto, OverviewDayDto,
+        OverviewDto, folder_color,
     },
     infra::{
         ndjson_reader::{parse_text, read_file},
@@ -204,18 +204,11 @@ impl LogService {
         folders.retain(|value| value.id != folder.id);
         folders.push(folder);
         folders.sort_by_key(|value| value.id);
-        validate_folders(&folders)?;
-        self.settings.folders = folders;
-        self.settings.next_folder_id = self.settings.next_folder_id.max(
-            self.settings
-                .folders
-                .iter()
-                .map(|value| value.id + 1)
-                .max()
-                .unwrap_or(1),
-        );
-        self.prepare_folders();
-        settings_store::save(&self.settings).map_err(|error| error.to_string())
+        let next_id = self
+            .settings
+            .next_folder_id
+            .max(folders.iter().map(|value| value.id + 1).max().unwrap_or(1));
+        self.save_folders(folders, next_id)
     }
 
     pub fn save_folders(
@@ -224,10 +217,31 @@ impl LogService {
         next_id: u64,
     ) -> Result<(), String> {
         validate_folders(&folders)?;
-        self.settings.folders = folders;
-        self.settings.next_folder_id = next_id;
-        self.prepare_folders();
-        settings_store::save(&self.settings).map_err(|error| error.to_string())
+        let changed_ids = changed_folder_ids(&self.settings.folders, &folders);
+        let folder_ids = folders
+            .iter()
+            .map(|folder| folder.id)
+            .collect::<BTreeSet<_>>();
+        let next_settings = Settings {
+            folders,
+            next_folder_id: next_id,
+            app_visibility: self.settings.app_visibility.clone(),
+        };
+        settings_store::save(&next_settings).map_err(|error| error.to_string())?;
+        self.settings = next_settings;
+        self.folder_daily.retain(|id, _| folder_ids.contains(id));
+        self.folder_segments.retain(|id, _| folder_ids.contains(id));
+        let changed_folders = self
+            .settings
+            .folders
+            .iter()
+            .filter(|folder| changed_ids.contains(&folder.id))
+            .map(|folder| (folder.id, folder.items.clone()))
+            .collect::<Vec<_>>();
+        for (id, items) in changed_folders {
+            self.prepare_folder(id, &items);
+        }
+        Ok(())
     }
 
     pub fn state(&self) -> ClientStateDto {
@@ -299,8 +313,6 @@ impl LogService {
         let all_dates = self.built.days.keys().collect::<Vec<_>>();
         let mut days = Vec::new();
         let mut segments = Vec::new();
-        let mut sessions = Vec::new();
-        let mut off_periods = Vec::new();
         if let (Some(first), Some(last)) = (all_dates.first(), all_dates.last()) {
             if let (Ok(first_date), Ok(last_date)) = (
                 chrono::NaiveDate::parse_from_str(first, "%Y-%m-%d"),
@@ -317,42 +329,22 @@ impl LogService {
                 let mut date = requested_start;
                 while date <= last_date {
                     let key = date.format("%Y-%m-%d").to_string();
-                    let day = self.built.days.get(&key).cloned().unwrap_or_default();
-                    let entity_segments = self.entity_segments(&key, &day);
-                    days.push(DayDetailDto::new(key, &day, entity_segments.clone()));
-                    segments.extend(entity_segments);
-                    sessions.extend(day.sessions);
-                    off_periods.extend(day.off_periods);
+                    let day = self.built.days.get(&key);
+                    days.push(OverviewDayDto {
+                        date: key.clone(),
+                        off_periods: day
+                            .map(|value| value.off_periods.clone())
+                            .unwrap_or_default(),
+                    });
+                    if let Some(day) = day {
+                        segments.extend(self.entity_segments(&key, day));
+                    }
                     let Some(next) = date.succ_opt() else { break };
                     date = next;
                 }
             }
         }
-        let apps = self
-            .built
-            .apps
-            .iter()
-            .map(|(exe, info)| {
-                (
-                    exe.clone(),
-                    AppDto::from_info(
-                        info,
-                        self.settings
-                            .app_visibility
-                            .get(exe)
-                            .copied()
-                            .unwrap_or(true),
-                    ),
-                )
-            })
-            .collect();
-        OverviewDto {
-            days,
-            segments,
-            sessions,
-            off_periods,
-            apps,
-        }
+        OverviewDto { days, segments }
     }
 
     pub fn day_detail(&self, date: &str) -> Option<DayDetailDto> {
@@ -370,23 +362,45 @@ impl LogService {
         let members = folder
             .map(|folder| folder.items.clone())
             .unwrap_or_else(|| vec![entity.to_string()]);
-        let raw_segments = self
-            .built
-            .days
-            .range(start.to_string()..=end.to_string())
-            .flat_map(|(_, data)| data.segments.iter())
-            .filter(|segment| members.contains(&segment.exe))
-            .cloned()
-            .collect::<Vec<_>>();
-        let segments = if let Some(folder) = folder {
-            self.folder_segments
+        let mut raw_segments = Vec::new();
+        for (date, data) in self.built.days.range(start.to_string()..=end.to_string()) {
+            for member in &members {
+                if let Some(indices) = self
+                    .prepared
+                    .segment_indices
+                    .get(member)
+                    .and_then(|days| days.get(date))
+                {
+                    raw_segments.extend(
+                        indices
+                            .iter()
+                            .filter_map(|index| data.segments.get(*index))
+                            .cloned(),
+                    );
+                }
+            }
+        }
+        if folder.is_some() {
+            raw_segments.sort_by_key(|segment| {
+                (
+                    segment.day.clone(),
+                    segment.start,
+                    segment.end,
+                    segment.exe.clone(),
+                )
+            });
+        }
+        let (segments, raw_segments) = if let Some(folder) = folder {
+            let segments = self
+                .folder_segments
                 .get(&folder.id)
                 .into_iter()
                 .flat_map(|days| days.range(start.to_string()..=end.to_string()))
                 .flat_map(|(_, segments)| segments.iter().cloned())
-                .collect()
+                .collect();
+            (segments, raw_segments)
         } else {
-            raw_segments.clone()
+            (raw_segments, Vec::new())
         };
         EntitySegmentsDto {
             segments,
@@ -418,31 +432,40 @@ impl LogService {
     fn prepare_folders(&mut self) {
         self.folder_daily.clear();
         self.folder_segments.clear();
-        for folder in &self.settings.folders {
-            let mut daily = folder_aggregate(&folder.items, &self.prepared.app_days);
-            let mut segment_days = BTreeMap::new();
-            for (date, data) in &self.built.days {
-                let mut merged =
-                    crate::domain::entity::merge_folder_intervals(&folder.items, &data.segments);
-                if merged.is_empty() {
-                    continue;
-                }
-                for segment in &mut merged {
-                    segment.exe = format!("f:{}", folder.id);
-                }
-                if let Some(aggregate) = daily.get_mut(date) {
-                    aggregate.max_focus = merged
-                        .iter()
-                        .map(|segment| segment.end.saturating_sub(segment.start))
-                        .max()
-                        .unwrap_or_default();
-                    aggregate.focus_count = merged.len().min(u32::MAX as usize) as u32;
-                }
-                segment_days.insert(date.clone(), merged);
-            }
-            self.folder_daily.insert(folder.id, daily);
-            self.folder_segments.insert(folder.id, segment_days);
+        let folders = self
+            .settings
+            .folders
+            .iter()
+            .map(|folder| (folder.id, folder.items.clone()))
+            .collect::<Vec<_>>();
+        for (id, items) in folders {
+            self.prepare_folder(id, &items);
         }
+    }
+
+    fn prepare_folder(&mut self, id: u64, items: &[String]) {
+        let mut daily = folder_aggregate(items, &self.prepared.app_days);
+        let mut segment_days = BTreeMap::new();
+        for (date, data) in &self.built.days {
+            let mut merged = crate::domain::entity::merge_folder_intervals(items, &data.segments);
+            if merged.is_empty() {
+                continue;
+            }
+            for segment in &mut merged {
+                segment.exe = format!("f:{id}");
+            }
+            if let Some(aggregate) = daily.get_mut(date) {
+                aggregate.max_focus = merged
+                    .iter()
+                    .map(|segment| segment.end.saturating_sub(segment.start))
+                    .max()
+                    .unwrap_or_default();
+                aggregate.focus_count = merged.len().min(u32::MAX as usize) as u32;
+            }
+            segment_days.insert(date.clone(), merged);
+        }
+        self.folder_daily.insert(id, daily);
+        self.folder_segments.insert(id, segment_days);
     }
 
     fn entity_segments(&self, date: &str, data: &DayData) -> Vec<FocusInterval> {
@@ -459,6 +482,18 @@ impl LogService {
         segments.sort_by_key(|segment| (segment.start, segment.end, segment.exe.clone()));
         segments
     }
+}
+
+fn changed_folder_ids(current: &[FolderSetting], next: &[FolderSetting]) -> BTreeSet<u64> {
+    next.iter()
+        .filter(|folder| {
+            current
+                .iter()
+                .find(|existing| existing.id == folder.id)
+                .is_none_or(|existing| existing.items != folder.items)
+        })
+        .map(|folder| folder.id)
+        .collect()
 }
 
 fn validate_folders(folders: &[FolderSetting]) -> Result<(), String> {
@@ -484,6 +519,33 @@ fn validate_folders(folders: &[FolderSetting]) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::domain::interval::{DayData, FocusInterval};
+
+    #[test]
+    fn folder_settings_only_rebuild_for_membership_changes() {
+        let current = vec![FolderSetting {
+            id: 1,
+            name: "Tools".into(),
+            on: true,
+            open: false,
+            items: vec!["a.exe".into()],
+        }];
+        let visibility_update = vec![FolderSetting {
+            on: false,
+            open: true,
+            name: "Renamed".into(),
+            ..current[0].clone()
+        }];
+        let membership_update = vec![FolderSetting {
+            items: vec!["a.exe".into(), "b.exe".into()],
+            ..current[0].clone()
+        }];
+
+        assert!(changed_folder_ids(&current, &visibility_update).is_empty());
+        assert_eq!(
+            changed_folder_ids(&current, &membership_update),
+            BTreeSet::from([1])
+        );
+    }
 
     #[test]
     fn folder_intervals_and_details_are_prepared_with_the_day_data() {
@@ -532,10 +594,18 @@ mod tests {
                 segment.exe == "f:1" && segment.start == 10 && segment.end == 30
             })
         );
+        let overview = service.overview(30);
+        assert_eq!(overview.days.len(), 1);
+        assert_eq!(overview.days[0].date, date);
+        assert_eq!(overview.segments.len(), 3);
         let detail = service.app_segments("f:1", &date, &date);
         assert_eq!(detail.segments.len(), 1);
         assert_eq!(detail.raw_segments.len(), 2);
         assert_eq!(detail.segments[0].exe, "f:1");
+
+        let app_detail = service.app_segments("a.exe", &date, &date);
+        assert_eq!(app_detail.segments.len(), 1);
+        assert!(app_detail.raw_segments.is_empty());
     }
 }
 

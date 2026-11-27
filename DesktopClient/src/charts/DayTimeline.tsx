@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import type { ClientStateDto, DayDetailDto, FocusSegment } from "../api/types";
 import { formatDuration, formatClock } from "../lib";
 import { visibleSegments } from "../lib";
@@ -14,12 +14,13 @@ type Props = {
 
 const rowHeight = 26;
 
-export function DayTimeline({ data, detail, zoom, onZoom, onEntity }: Props) {
+export const DayTimeline = memo(function DayTimeline({ data, detail, zoom, onZoom, onEntity }: Props) {
   const { ref, width, height } = useSize<HTMLDivElement>();
   const segments = useMemo(() => visibleSegments(data, detail.segments), [data, detail.segments]);
   const rows = new Map<string, number>();
   segments.forEach((segment) => rows.set(segment.exe, (rows.get(segment.exe) ?? 0) + segment.end - segment.start));
   const entities = [...rows].sort((a, b) => b[1] - a[1]).map(([entity]) => entity);
+  const rowByEntity = new Map(entities.map((entity, index) => [entity, index]));
   const chartWidth = Math.max(400, width - 150) * zoom;
   const chartHeight = entities.length * rowHeight;
   const scroll = (event: React.WheelEvent<HTMLDivElement>) => {
@@ -31,8 +32,6 @@ export function DayTimeline({ data, detail, zoom, onZoom, onEntity }: Props) {
       event.preventDefault();
     }
   };
-  const totals = new Map<string, number>();
-  segments.forEach((segment) => totals.set(segment.exe, (totals.get(segment.exe) ?? 0) + segment.end - segment.start));
   const hours = Array.from({ length: 25 }, (_, hour) => (
     <g key={hour}>
       <line
@@ -47,12 +46,14 @@ export function DayTimeline({ data, detail, zoom, onZoom, onEntity }: Props) {
       </text>
     </g>
   ));
-  const entityColor = (entity: string) =>
-    data.apps.find((app) => app.exe === entity)?.color ??
-    data.folders.find((folder) => `f:${folder.id}` === entity)?.color ?? "#9aa1ad";
-  const entityName = (entity: string) =>
-    data.apps.find((app) => app.exe === entity)?.name ??
-    data.folders.find((folder) => `f:${folder.id}` === entity)?.name ?? entity;
+  const colors = new Map(data.apps.map((app) => [app.exe, app.color]));
+  const names = new Map(data.apps.map((app) => [app.exe, app.name]));
+  data.folders.forEach((folder) => {
+    colors.set(`f:${folder.id}`, folder.color);
+    names.set(`f:${folder.id}`, folder.name);
+  });
+  const entityColor = (entity: string) => colors.get(entity) ?? "#9aa1ad";
+  const entityName = (entity: string) => names.get(entity) ?? entity;
 
   return (
     <div ref={ref} className="dayTimeline">
@@ -87,7 +88,7 @@ export function DayTimeline({ data, detail, zoom, onZoom, onEntity }: Props) {
               ))}
               {hours}
               {segments.map((segment, index) => {
-                const row = entities.indexOf(segment.exe);
+                const row = rowByEntity.get(segment.exe) ?? 0;
                 return (
                   <rect
                     key={`${segment.exe}-${segment.start}-${index}`}
@@ -110,7 +111,7 @@ export function DayTimeline({ data, detail, zoom, onZoom, onEntity }: Props) {
       )}
     </div>
   );
-}
+});
 
 export function dayTotals(segments: FocusSegment[]) {
   const total = segments.reduce((sum, segment) => sum + segment.end - segment.start, 0);

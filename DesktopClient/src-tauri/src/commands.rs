@@ -169,8 +169,10 @@ pub fn save_folders(
     folders: Vec<FolderSetting>,
     next_id: u64,
     state: tauri::State<'_, AppState>,
-) -> Result<crate::dto::ClientStateDto, String> {
-    let mut service = state.service.lock().map_err(|error| error.to_string())?;
-    service.save_folders(folders, next_id)?;
-    Ok(service.state())
+) -> Result<(), String> {
+    state
+        .service
+        .lock()
+        .map_err(|error| error.to_string())?
+        .save_folders(folders, next_id)
 }

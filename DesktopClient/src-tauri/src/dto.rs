@@ -70,12 +70,15 @@ impl DayDetailDto {
 }
 
 #[derive(Clone, Serialize)]
-pub struct OverviewDto {
-    pub days: Vec<DayDetailDto>,
-    pub segments: Vec<FocusInterval>,
-    pub sessions: Vec<crate::domain::interval::DaySession>,
+pub struct OverviewDayDto {
+    pub date: String,
     pub off_periods: Vec<crate::domain::interval::DaySession>,
-    pub apps: BTreeMap<String, AppDto>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct OverviewDto {
+    pub days: Vec<OverviewDayDto>,
+    pub segments: Vec<FocusInterval>,
 }
 
 #[derive(Clone, Serialize)]

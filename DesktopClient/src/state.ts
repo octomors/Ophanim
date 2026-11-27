@@ -2,8 +2,6 @@ import { create } from "zustand";
 import type {
   ClientStateDto,
   DayDetailDto,
-  EntitySegmentsDto,
-  OverviewDto,
 } from "./api/types";
 
 export type Screen = "overview" | "day" | "app";
@@ -12,9 +10,7 @@ export type ChartView = "heatmap" | "histogram" | "donut";
 
 type UiState = {
   data: ClientStateDto | null;
-  overview: OverviewDto | null;
   detail: DayDetailDto | null;
-  appSegments: EntitySegmentsDto | null;
   screen: Screen;
   day: string | null;
   entity: string | null;
@@ -27,17 +23,13 @@ type UiState = {
   loading: boolean;
   error: string | null;
   setData: (data: ClientStateDto) => void;
-  setOverview: (overview: OverviewDto) => void;
   setDetail: (detail: DayDetailDto | null) => void;
-  setAppSegments: (segments: EntitySegmentsDto | null) => void;
   patch: (values: Partial<UiState>) => void;
 };
 
 export const useUi = create<UiState>((set) => ({
   data: null,
-  overview: null,
   detail: null,
-  appSegments: null,
   screen: "overview",
   day: null,
   entity: null,
@@ -50,8 +42,6 @@ export const useUi = create<UiState>((set) => ({
   loading: true,
   error: null,
   setData: (data) => set({ data, loading: false, error: data.error }),
-  setOverview: (overview) => set({ overview }),
   setDetail: (detail) => set({ detail }),
-  setAppSegments: (appSegments) => set({ appSegments }),
   patch: (values) => set(values),
 }));
